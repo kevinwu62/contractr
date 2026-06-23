@@ -1,0 +1,27 @@
+{
+  "name": "@contractr/word-addin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "certs:install": "office-addin-dev-certs install",
+    "certs:verify": "office-addin-dev-certs verify",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/office-js": "^1.0.472",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "office-addin-dev-certs": "^2.0.9",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.1"
+  }
+}
