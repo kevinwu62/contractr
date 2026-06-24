@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 2 — Full document reader  
-**Last completed milestone:** Step 1 — Word add-in skeleton  
-**Next task:** Retest `Read Full Document` in Word for Mac with a dummy contract.
+**Current milestone:** Step 3 — Defined-term detection  
+**Last completed milestone:** Step 2 — Full document reader  
+**Next task:** Retest `Analyze Defined Terms` in Word for Mac with preamble, recital, and other quoted defined terms outside the formal definitions section.
 
 ---
 
@@ -28,7 +28,7 @@ Tasks:
 
 Commit:
 
-- [ ] Add commit hash/link if useful.
+- [X] Add commit hash/link if useful.
 
 Notes:
 
@@ -54,7 +54,7 @@ Tasks:
 - [x] Use Office.js to read selected text from the active Word document.
 - [x] Display selected text in the sidebar.
 - [x] Test in Word on Mac with a dummy document.
-- [ ] Commit working skeleton.
+- [X] Commit working skeleton.
 
 Definition of done:
 
@@ -82,7 +82,7 @@ Notes:
 
 ### Step 2 — Full Document Reader
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -95,13 +95,13 @@ Tasks:
 - [x] Preserve paragraph breaks where reasonably possible.
 - [x] Display a preview and/or character count in the sidebar.
 - [x] Add basic error handling.
-- [ ] Test with a dummy contract.
-- [ ] Commit working feature.
+- [x] Test with a dummy contract.
+- [X] Commit working feature.
 
 Definition of done:
 
-- [ ] Add-in can read a dummy contract.
-- [ ] Sidebar shows full-document preview or clear extracted output.
+- [x] Add-in can read a dummy contract.
+- [x] Sidebar shows full-document preview or clear extracted output.
 
 Suggested commit message:
 
@@ -118,7 +118,7 @@ Notes:
 
 ### Step 3 — Defined-Term Detection
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual test still needed.
 
 Goal:
 
@@ -126,13 +126,13 @@ Create the first useful contract-analysis feature.
 
 Tasks:
 
-- [ ] Add `Analyze Defined Terms` button.
-- [ ] Detect quoted terms.
-- [ ] Detect likely definition patterns.
-- [ ] Extract likely definition sentence or paragraph.
-- [ ] Count term usage.
-- [ ] Display terms, definitions, and usage counts in sidebar.
-- [ ] Test with dummy contract.
+- [x] Add `Analyze Defined Terms` button.
+- [x] Detect quoted terms.
+- [x] Detect likely definition patterns.
+- [x] Extract likely definition sentence or paragraph.
+- [x] Count term usage.
+- [x] Display terms, definitions, and usage counts in sidebar.
+- [X] Test with dummy contract.
 - [ ] Commit working feature.
 
 Definition of done:
@@ -147,7 +147,15 @@ Suggested commit message:
 
 Notes:
 
--
+- Implemented deterministic detection in the existing Word task pane; no AI, backend, database, auth, Next.js, or `contract-core` package added.
+- Analyzer reuses the full-document paragraph read flow, detects straight or curly quoted terms followed by `means`, `shall mean`, `has the meaning`, or `refers to`, and labels output as likely/potential.
+- Follow-up fix added deterministic detection for preamble-style parenthetical aliases such as `(the "Agreement")`, `("Company")`, and `("Buyer")`; these are labelled as potential defined terms rather than certain definitions.
+- Second follow-up fix added a fallback quoted-term pass for terms that appear in quotation marks outside formal definition patterns, including quoted preamble terms that are not the whole parenthetical phrase. These are labelled as potential defined terms with the source paragraph shown.
+- Full document text is used only during the click handler analysis; the UI stores result summaries and character count, not the full document text.
+- Validation in the project working tree is currently blocked by local file read errors: `Resource deadlock avoided` on `manifest.xml`, `package-lock.json`, and several `node_modules` files.
+- Workaround validation succeeded in a temporary clean add-in copy made from the readable source files: `npm run typecheck` passed and `npm run build` passed after the broader quoted-term fallback fix.
+- In-place manifest validation could not be completed because local tools cannot read `apps/word-addin/manifest.xml`; this feature did not modify the manifest.
+- Suggested commit message: `Add defined term extractor`
 
 ---
 

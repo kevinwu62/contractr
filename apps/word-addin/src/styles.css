@@ -128,3 +128,58 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.defined-term-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.defined-term-item {
+  border-top: 1px solid #d9dee7;
+  padding-top: 14px;
+}
+
+.defined-term-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.defined-term-item h2 {
+  margin: 0 0 8px;
+  color: #102033;
+  font-size: 1.12rem;
+  line-height: 1.25;
+}
+
+.term-meta,
+.definition-label,
+.definition-text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.term-meta {
+  color: #506070;
+  font-size: 0.92rem;
+}
+
+.definition-label {
+  margin-top: 10px;
+  color: #394957;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.definition-text {
+  margin-top: 4px;
+  border-radius: 4px;
+  background: #f2f5f8;
+  color: #102033;
+  padding: 10px;
+  word-break: break-word;
+}
