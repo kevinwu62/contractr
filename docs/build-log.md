@@ -8,7 +8,7 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 **Current milestone:** Step 3 — Defined-term detection  
 **Last completed milestone:** Step 2 — Full document reader  
-**Next task:** Retest `Analyze Defined Terms` in Word for Mac with singular/plural defined-term variants in preamble, recital, and definitions text.
+**Next task:** Retest `Analyze Defined Terms` in Word for Mac with overlapping defined terms such as `Service` / `Service Provider`, `Purchase Price` / `Base Purchase Price`, and `Closing` / `Closing Date`.
 
 ---
 
@@ -143,7 +143,7 @@ Definition of done:
 
 Suggested commit message:
 
-`Add defined term extractor`
+`Fix overlapping defined term usage counting`
 
 Notes:
 
@@ -152,11 +152,15 @@ Notes:
 - Follow-up fix added deterministic detection for preamble-style parenthetical aliases such as `(the "Agreement")`, `("Company")`, and `("Buyer")`; these are labelled as potential defined terms rather than certain definitions.
 - Second follow-up fix added a fallback quoted-term pass for terms that appear in quotation marks outside formal definition patterns, including quoted preamble terms that are not the whole parenthetical phrase. These are labelled as potential defined terms with the source paragraph shown.
 - Third follow-up fix groups simple singular/plural variants into the same displayed defined term, so examples like `Party`/`Parties`, `Company`/`Companies`, and `Service`/`Services` share one result and one potential usage count. Merged rows show detected variants in the sidebar.
+- Fourth follow-up fix corrected overlapping defined-term usage counting. Usage matching is now phrase-boundary aware and case-sensitive, so shorter terms are not counted merely because they appear inside longer capitalized defined terms such as `Service Provider`, `Base Purchase Price`, or `Closing Date`.
+- Usage counts now exclude the detected source paragraph for each term so a definition line is not counted as a separate usage of its own term.
 - Full document text is used only during the click handler analysis; the UI stores result summaries and character count, not the full document text.
 - Validation in the project working tree is currently blocked by local file read errors: `Resource deadlock avoided` on `manifest.xml`, `package-lock.json`, and several `node_modules` files.
-- Workaround validation succeeded in a temporary clean add-in copy made from the readable source files: `npm run typecheck` passed and `npm run build` passed after the broader quoted-term fallback fix and after the singular/plural grouping fix.
+- Workaround validation succeeded in a temporary clean add-in copy made from the readable source files: `npm run typecheck` passed and `npm run build` passed after the broader quoted-term fallback fix, after the singular/plural grouping fix, and after the overlapping defined-term usage counting fix.
 - In-place manifest validation could not be completed because local tools cannot read `apps/word-addin/manifest.xml`; this feature did not modify the manifest.
-- Suggested commit message: `Add defined term extractor`
+- Scratch overlap check confirmed that `Service Provider` is not counted as `Service`, `Base Purchase Price` is not counted as `Purchase Price` unless `Purchase Price` appears separately, and `Closing Date` is not counted as `Closing`.
+- Remaining limitation: the overlap guard is deterministic and conservative. It treats immediately adjacent capitalized words as likely part of a longer defined-term phrase, which is appropriate for common contract terms but may undercount unusual prose.
+- Suggested commit message: `Fix overlapping defined term usage counting`
 
 ---
 

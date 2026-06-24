@@ -7,6 +7,7 @@ type DefinedTermResult = {
   term: string;
   detectedVariants: string[];
   definitionText: string;
+  sourceTexts: string[];
   usageCount: number;
   patternLabel: string;
   confidenceLabel: string;
@@ -25,13 +26,104 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function countTermUsage(documentText: string, term: string) {
-  const termPattern = getTermUsageVariants(term)
-    .map((variant) => escapeRegExp(variant))
-    .join("|");
-  const usagePattern = new RegExp(`(^|[^A-Za-z0-9])(?:${termPattern})([^A-Za-z0-9]|$)`, "gi");
+function buildDefinedTermUsageRegex(term: string) {
+  const phrasePattern = term
+    .trim()
+    .split(/\s+/)
+    .map((termPart) => escapeRegExp(termPart))
+    .join("\\s+");
 
-  return Array.from(documentText.matchAll(usagePattern)).length;
+  return new RegExp(phrasePattern, "g");
+}
+
+function isTermCharacter(value: string | undefined) {
+  return Boolean(value && /[A-Za-z0-9]/.test(value));
+}
+
+function hasCapitalizedWordBefore(documentText: string, matchStart: number) {
+  const previousWordMatch = documentText.slice(0, matchStart).match(/([A-Z][A-Za-z0-9'&-]*)\s+$/);
+  const ordinaryLeadInWords = new Set([
+    "A",
+    "All",
+    "An",
+    "Any",
+    "Each",
+    "For",
+    "From",
+    "In",
+    "On",
+    "The",
+    "This",
+    "To",
+    "Under",
+  ]);
+
+  return Boolean(previousWordMatch && !ordinaryLeadInWords.has(previousWordMatch[1]));
+}
+
+function hasCapitalizedWordAfter(documentText: string, matchEnd: number) {
+  return /^\s+[A-Z][A-Za-z0-9'&-]*/.test(documentText.slice(matchEnd));
+}
+
+function isStandaloneDefinedTermUsage(documentText: string, matchStart: number, matchEnd: number) {
+  if (isTermCharacter(documentText[matchStart - 1]) || isTermCharacter(documentText[matchEnd])) {
+    return false;
+  }
+
+  return !(
+    hasCapitalizedWordBefore(documentText, matchStart) ||
+    hasCapitalizedWordAfter(documentText, matchEnd)
+  );
+}
+
+function getExcludedRanges(documentText: string, excludedTexts: string[]) {
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  for (const excludedText of uniqueValues(excludedTexts)) {
+    let searchStart = 0;
+    let sourceStart = documentText.indexOf(excludedText, searchStart);
+
+    while (sourceStart !== -1) {
+      ranges.push({ start: sourceStart, end: sourceStart + excludedText.length });
+      searchStart = sourceStart + excludedText.length;
+      sourceStart = documentText.indexOf(excludedText, searchStart);
+    }
+  }
+
+  return ranges;
+}
+
+function rangesOverlap(firstStart: number, firstEnd: number, secondStart: number, secondEnd: number) {
+  return firstStart < secondEnd && secondStart < firstEnd;
+}
+
+function countTermUsage(documentText: string, terms: string[], excludedTexts: string[]) {
+  const excludedRanges = getExcludedRanges(documentText, excludedTexts);
+  const countedRanges: Array<{ start: number; end: number }> = [];
+  const termVariants = uniqueValues(terms.flatMap((term) => getTermUsageVariants(term)))
+    .filter(Boolean)
+    .sort((first, second) => second.length - first.length);
+
+  for (const termVariant of termVariants) {
+    const usagePattern = buildDefinedTermUsageRegex(termVariant);
+
+    for (const match of documentText.matchAll(usagePattern)) {
+      const matchStart = match.index;
+      const matchEnd = matchStart + match[0].length;
+
+      if (
+        !isStandaloneDefinedTermUsage(documentText, matchStart, matchEnd) ||
+        excludedRanges.some((range) => rangesOverlap(matchStart, matchEnd, range.start, range.end)) ||
+        countedRanges.some((range) => rangesOverlap(matchStart, matchEnd, range.start, range.end))
+      ) {
+        continue;
+      }
+
+      countedRanges.push({ start: matchStart, end: matchEnd });
+    }
+  }
+
+  return countedRanges.length;
 }
 
 function uniqueValues(values: string[]) {
@@ -136,13 +228,15 @@ function addDefinedTermResult(
 
   if (existingResult) {
     const detectedVariants = uniqueValues([...existingResult.detectedVariants, normalizedTerm]);
+    const sourceTexts = uniqueValues([...existingResult.sourceTexts, definitionText]);
     const shouldReplaceDefinition = getConfidenceRank(confidenceLabel) > getConfidenceRank(existingResult.confidenceLabel);
 
     resultsByTerm.set(termKey, {
       ...existingResult,
       detectedVariants,
       definitionText: shouldReplaceDefinition ? definitionText : existingResult.definitionText,
-      usageCount: countTermUsage(documentText, canonicalTerm),
+      sourceTexts,
+      usageCount: countTermUsage(documentText, detectedVariants, sourceTexts),
       patternLabel: shouldReplaceDefinition ? patternLabel : existingResult.patternLabel,
       confidenceLabel: shouldReplaceDefinition ? confidenceLabel : existingResult.confidenceLabel,
     });
@@ -153,7 +247,8 @@ function addDefinedTermResult(
     term: canonicalTerm,
     detectedVariants: [normalizedTerm],
     definitionText,
-    usageCount: countTermUsage(documentText, canonicalTerm),
+    sourceTexts: [definitionText],
+    usageCount: countTermUsage(documentText, [normalizedTerm], [definitionText]),
     patternLabel,
     confidenceLabel,
   });
