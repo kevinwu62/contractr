@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 3 — Defined-term detection  
-**Last completed milestone:** Step 2 — Full document reader  
-**Next task:** Retest `Analyze Defined Terms` in Word for Mac with overlapping defined terms such as `Service` / `Service Provider`, `Purchase Price` / `Base Purchase Price`, and `Closing` / `Closing Date`.
+**Current milestone:** Step 4 — Contract-Core Refactor  
+**Last completed milestone:** Step 3 — Defined-term detection  
+**Next task:** Retest `Analyze Defined Terms` in Word for Mac with the fake Contractr test agreement after the `contract-core` refactor.
 
 ---
 
@@ -118,7 +118,7 @@ Notes:
 
 ### Step 3 — Defined-Term Detection
 
-**Status:** Implemented locally — Word for Mac manual test still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -147,7 +147,7 @@ Suggested commit message:
 
 Notes:
 
-- Implemented deterministic detection in the existing Word task pane; no AI, backend, database, auth, Next.js, or `contract-core` package added.
+- Implemented deterministic detection in the Word task pane, then moved reusable analysis logic to `packages/contract-core` during Step 4; no AI, backend, database, auth, or Next.js added.
 - Analyzer reuses the full-document paragraph read flow, detects straight or curly quoted terms followed by `means`, `shall mean`, `has the meaning`, or `refers to`, and labels output as likely/potential.
 - Follow-up fix added deterministic detection for preamble-style parenthetical aliases such as `(the "Agreement")`, `("Company")`, and `("Buyer")`; these are labelled as potential defined terms rather than certain definitions.
 - Second follow-up fix added a fallback quoted-term pass for terms that appear in quotation marks outside formal definition patterns, including quoted preamble terms that are not the whole parenthetical phrase. These are labelled as potential defined terms with the source paragraph shown.
@@ -166,7 +166,7 @@ Notes:
 
 ### Step 4 — Contract-Core Refactor
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed after refactor.
 
 Goal:
 
@@ -174,16 +174,16 @@ Move reusable contract logic out of the Word UI.
 
 Tasks:
 
-- [ ] Create `packages/contract-core/`.
-- [ ] Move defined-term logic into reusable TypeScript functions.
-- [ ] Export functions from `contract-core`.
-- [ ] Update Word add-in to import from `contract-core`.
-- [ ] Confirm defined-term detection still works.
+- [x] Create `packages/contract-core/`.
+- [x] Move defined-term logic into reusable TypeScript functions.
+- [x] Export functions from `contract-core`.
+- [x] Update Word add-in to import from `contract-core`.
+- [x] Confirm defined-term detection still works in code-level validation.
 - [ ] Commit refactor.
 
 Definition of done:
 
-- [ ] Contract parsing logic is no longer trapped inside UI components.
+- [x] Contract parsing logic is no longer trapped inside UI components.
 - [ ] Word add-in still works after refactor.
 
 Suggested commit message:
@@ -192,7 +192,20 @@ Suggested commit message:
 
 Notes:
 
--
+- Created `packages/contract-core` with exported deterministic functions:
+  - `extractDefinedTerms(documentText)`
+  - `countTermUsages(documentText, term, options)`
+  - `findDefinedButUnusedTerms(documentText, definedTerms)`
+  - `findPotentialUndefinedTerms(documentText, definedTerms)` as a clear Step 5 placeholder returning an empty list.
+- Moved Step 3 defined-term extraction, parenthetical/quoted term detection, singular/plural grouping, source-paragraph exclusion, and phrase-boundary usage counting into `packages/contract-core/src/definedTerms.ts`.
+- Updated the Word add-in to import `extractDefinedTerms` and `DefinedTermResult` from `@contractr/contract-core`.
+- Added TypeScript and Vite aliases so the add-in can import the local package without adding a new monorepo manager yet.
+- User-facing behavior should be unchanged: `Read Selected Text`, `Read Full Document`, and `Analyze Defined Terms` remain in the Word task pane.
+- In-place validation remains blocked by local file read errors: `Resource deadlock avoided` on `node_modules/.bin/tsc` and `manifest.xml`.
+- Workaround validation in `/tmp/contractr-step4-check` succeeded: `npm install`, `npm run typecheck`, and `npm run build` passed.
+- Direct smoke check of the extracted package functions passed for explicit definitions, parenthetical definitions with straight and smart quotes, quoted preamble terms, singular/plural grouping, and overlapping terms.
+- Manifest validation could not be completed in-place because `xmllint --noout manifest.xml` still reports `Resource deadlock avoided` / empty document; this refactor did not modify `manifest.xml`.
+- Suggested commit message: `Refactor contract logic into contract-core`
 
 ---
 
