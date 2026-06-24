@@ -1,10 +1,15 @@
 import { useEffect, useState } from "react";
 
 type OfficeState = "loading" | "ready" | "unavailable";
+type OutputKind = "selected" | "document";
+
+const fullDocumentPreviewLimit = 2500;
 
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeState>("loading");
-  const [selectedText, setSelectedText] = useState("");
+  const [outputText, setOutputText] = useState("");
+  const [outputKind, setOutputKind] = useState<OutputKind>("selected");
+  const [characterCount, setCharacterCount] = useState<number | null>(null);
   const [message, setMessage] = useState("Select text in Word, then click the button.");
 
   useEffect(() => {
@@ -38,12 +43,52 @@ export function App() {
         await context.sync();
 
         const text = selection.text.trim();
-        setSelectedText(text);
+        setOutputKind("selected");
+        setOutputText(text);
+        setCharacterCount(null);
         setMessage(text ? "Selected text:" : "No text is selected. Select text in Word and try again.");
       });
     } catch (error) {
       console.error("Unable to read selected text.", error);
+      setOutputKind("selected");
+      setOutputText("");
+      setCharacterCount(null);
       setMessage("Contractr could not read the selected text. Please try again.");
+    }
+  }
+
+  async function readFullDocument() {
+    if (officeState !== "ready") {
+      return;
+    }
+
+    try {
+      await Word.run(async (context) => {
+        const paragraphs = context.document.body.paragraphs;
+        paragraphs.load("items/text");
+
+        await context.sync();
+
+        const text = paragraphs.items
+          .map((paragraph) => paragraph.text.trimEnd())
+          .join("\n\n")
+          .trim();
+        const preview =
+          text.length > fullDocumentPreviewLimit
+            ? `${text.slice(0, fullDocumentPreviewLimit).trimEnd()}\n\n[Preview truncated]`
+            : text;
+
+        setOutputKind("document");
+        setOutputText(preview);
+        setCharacterCount(text.length);
+        setMessage(text ? "Full document preview:" : "This document appears to be empty.");
+      });
+    } catch (error) {
+      console.error("Unable to read full document.", error);
+      setOutputKind("document");
+      setOutputText("");
+      setCharacterCount(null);
+      setMessage("Contractr could not read the full document. Please check that a Word document is open and try again.");
     }
   }
 
@@ -57,10 +102,16 @@ export function App() {
       <button className="primary-button" disabled={officeState !== "ready"} onClick={readSelectedText}>
         Read Selected Text
       </button>
+      <button className="secondary-button" disabled={officeState !== "ready"} onClick={readFullDocument}>
+        Read Full Document
+      </button>
 
       <section className="output" aria-live="polite">
         <p className="status">{message}</p>
-        {selectedText ? <pre>{selectedText}</pre> : null}
+        {outputKind === "document" && characterCount !== null ? (
+          <p className="count">{characterCount.toLocaleString()} characters</p>
+        ) : null}
+        {outputText ? <pre>{outputText}</pre> : null}
       </section>
     </main>
   );

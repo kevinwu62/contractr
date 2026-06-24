@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 1 — Word add-in skeleton  
-**Last completed milestone:** Step 0 — Project foundation  
-**Next task:** Retest the sideloaded add-in in Word for Mac after installing the trusted local Office add-in certificate.
+**Current milestone:** Step 2 — Full document reader  
+**Last completed milestone:** Step 1 — Word add-in skeleton  
+**Next task:** Retest `Read Full Document` in Word for Mac with a dummy contract.
 
 ---
 
@@ -39,7 +39,7 @@ Notes:
 
 ### Step 1 — Word Add-in Skeleton
 
-**Status:** In progress — app skeleton created, HTTPS certificate setup fixed, and build verified; Word for Mac sideload retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -53,14 +53,14 @@ Tasks:
 - [x] Add a `Read Selected Text` button.
 - [x] Use Office.js to read selected text from the active Word document.
 - [x] Display selected text in the sidebar.
-- [ ] Test in Word on Mac with a dummy document.
+- [x] Test in Word on Mac with a dummy document.
 - [ ] Commit working skeleton.
 
 Definition of done:
 
-- [ ] Sidebar opens in Word.
-- [ ] User can select text in Word.
-- [ ] Clicking `Read Selected Text` displays the selected text in the sidebar.
+- [x] Sidebar opens in Word.
+- [x] User can select text in Word.
+- [x] Clicking `Read Selected Text` displays the selected text in the sidebar.
 
 Suggested commit message:
 
@@ -72,17 +72,17 @@ Notes:
 - Uses hosted Office.js from Microsoft and local HTTPS dev server at `https://localhost:3000`.
 - No AI, backend, database, authentication, full-document reader, or defined-term detection added.
 - Verified locally with `npm run typecheck`, `npm run build`, and `xmllint --noout apps/word-addin/manifest.xml`.
-- Word for Mac sideloading remains the next manual verification step.
 - Blocker found during Word testing: Word blocked the task pane content because the local HTTPS content was not signed by a trusted certificate.
 - Fixed the local HTTPS setup by replacing Vite's generic basic SSL certificate with `office-addin-dev-certs`, adding certificate install/verify scripts, and configuring Vite to serve on `https://localhost:3000` to match `manifest.xml` exactly.
 - Verified certificate trust with `npm run certs:verify`.
 - Verified the manifest URL by starting the dev server and confirming `https://localhost:3000/index.html` returns `HTTP/2 200` when curl uses the Office add-in development CA.
+- Kevin confirmed Step 1 opens in Word and `Read Selected Text` works.
 
 ---
 
 ### Step 2 — Full Document Reader
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
@@ -90,11 +90,11 @@ Allow the add-in to read the active Word document body.
 
 Tasks:
 
-- [ ] Add `Read Full Document` button.
-- [ ] Read the active document body through Office.js.
-- [ ] Preserve paragraph breaks where reasonably possible.
-- [ ] Display a preview and/or character count in the sidebar.
-- [ ] Add basic error handling.
+- [x] Add `Read Full Document` button.
+- [x] Read the active document body through Office.js.
+- [x] Preserve paragraph breaks where reasonably possible.
+- [x] Display a preview and/or character count in the sidebar.
+- [x] Add basic error handling.
 - [ ] Test with a dummy contract.
 - [ ] Commit working feature.
 
@@ -109,7 +109,10 @@ Suggested commit message:
 
 Notes:
 
--
+- Implemented in the existing React task pane without adding AI, defined-term detection, backend, database, auth, or Next.js.
+- `Read Full Document` reads Word body paragraphs through Office.js, joins paragraphs with blank lines, shows a preview, and displays the full character count.
+- Full document text is not logged and is not stored outside the current UI flow; only the preview and count are kept in React state.
+- Verified with `npm run typecheck`, `npm run build`, and `xmllint --noout manifest.xml`.
 
 ---
 

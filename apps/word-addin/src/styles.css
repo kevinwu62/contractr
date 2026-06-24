@@ -53,23 +53,40 @@ h1 {
   line-height: 1.1;
 }
 
-.primary-button {
+.primary-button,
+.secondary-button {
   width: 100%;
-  border: 0;
   border-radius: 6px;
-  background: #155e75;
-  color: #ffffff;
   cursor: pointer;
   font-weight: 700;
   padding: 12px 14px;
+}
+
+.primary-button {
+  border: 0;
+  background: #155e75;
+  color: #ffffff;
 }
 
 .primary-button:hover:not(:disabled) {
   background: #164e63;
 }
 
-.primary-button:disabled {
+.secondary-button {
+  border: 1px solid #155e75;
+  background: #ffffff;
+  color: #155e75;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #e7f4f7;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  border-color: #9aa8b5;
   background: #9aa8b5;
+  color: #ffffff;
   cursor: not-allowed;
 }
 
@@ -89,6 +106,13 @@ h1 {
   margin: 0;
   color: #394957;
   line-height: 1.45;
+}
+
+.count {
+  margin: -4px 0 0;
+  color: #506070;
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 pre {
