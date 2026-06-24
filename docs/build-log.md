@@ -8,7 +8,7 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 **Current milestone:** Step 3 — Defined-term detection  
 **Last completed milestone:** Step 2 — Full document reader  
-**Next task:** Retest `Analyze Defined Terms` in Word for Mac with preamble, recital, and other quoted defined terms outside the formal definitions section.
+**Next task:** Retest `Analyze Defined Terms` in Word for Mac with singular/plural defined-term variants in preamble, recital, and definitions text.
 
 ---
 
@@ -133,13 +133,13 @@ Tasks:
 - [x] Count term usage.
 - [x] Display terms, definitions, and usage counts in sidebar.
 - [X] Test with dummy contract.
-- [ ] Commit working feature.
+- [X] Commit working feature.
 
 Definition of done:
 
-- [ ] Sidebar lists defined terms.
-- [ ] Each term shows a likely definition.
-- [ ] Each term shows usage count.
+- [X] Sidebar lists defined terms.
+- [X] Each term shows a likely definition.
+- [X] Each term shows usage count.
 
 Suggested commit message:
 
@@ -151,9 +151,10 @@ Notes:
 - Analyzer reuses the full-document paragraph read flow, detects straight or curly quoted terms followed by `means`, `shall mean`, `has the meaning`, or `refers to`, and labels output as likely/potential.
 - Follow-up fix added deterministic detection for preamble-style parenthetical aliases such as `(the "Agreement")`, `("Company")`, and `("Buyer")`; these are labelled as potential defined terms rather than certain definitions.
 - Second follow-up fix added a fallback quoted-term pass for terms that appear in quotation marks outside formal definition patterns, including quoted preamble terms that are not the whole parenthetical phrase. These are labelled as potential defined terms with the source paragraph shown.
+- Third follow-up fix groups simple singular/plural variants into the same displayed defined term, so examples like `Party`/`Parties`, `Company`/`Companies`, and `Service`/`Services` share one result and one potential usage count. Merged rows show detected variants in the sidebar.
 - Full document text is used only during the click handler analysis; the UI stores result summaries and character count, not the full document text.
 - Validation in the project working tree is currently blocked by local file read errors: `Resource deadlock avoided` on `manifest.xml`, `package-lock.json`, and several `node_modules` files.
-- Workaround validation succeeded in a temporary clean add-in copy made from the readable source files: `npm run typecheck` passed and `npm run build` passed after the broader quoted-term fallback fix.
+- Workaround validation succeeded in a temporary clean add-in copy made from the readable source files: `npm run typecheck` passed and `npm run build` passed after the broader quoted-term fallback fix and after the singular/plural grouping fix.
 - In-place manifest validation could not be completed because local tools cannot read `apps/word-addin/manifest.xml`; this feature did not modify the manifest.
 - Suggested commit message: `Add defined term extractor`
 

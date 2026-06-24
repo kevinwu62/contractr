@@ -5,6 +5,7 @@ type OutputKind = "selected" | "document" | "definedTerms";
 
 type DefinedTermResult = {
   term: string;
+  detectedVariants: string[];
   definitionText: string;
   usageCount: number;
   patternLabel: string;
@@ -25,10 +26,81 @@ function escapeRegExp(value: string) {
 }
 
 function countTermUsage(documentText: string, term: string) {
-  const termPattern = escapeRegExp(term);
-  const usagePattern = new RegExp(`(^|[^A-Za-z0-9])${termPattern}([^A-Za-z0-9]|$)`, "g");
+  const termPattern = getTermUsageVariants(term)
+    .map((variant) => escapeRegExp(variant))
+    .join("|");
+  const usagePattern = new RegExp(`(^|[^A-Za-z0-9])(?:${termPattern})([^A-Za-z0-9]|$)`, "gi");
 
   return Array.from(documentText.matchAll(usagePattern)).length;
+}
+
+function uniqueValues(values: string[]) {
+  return Array.from(new Set(values));
+}
+
+function singularizeLastWord(term: string) {
+  const words = term.trim().split(/\s+/);
+  const lastWord = words[words.length - 1];
+
+  if (!lastWord) {
+    return term.trim();
+  }
+
+  const singularLastWord = singularizeWord(lastWord);
+
+  return [...words.slice(0, -1), singularLastWord].join(" ");
+}
+
+function singularizeWord(word: string) {
+  if (word.length <= 3 || /(ss|is|us|series)$/i.test(word)) {
+    return word;
+  }
+
+  if (/ies$/i.test(word)) {
+    return `${word.slice(0, -3)}y`;
+  }
+
+  if (/(ches|shes|xes|zes)$/i.test(word)) {
+    return word.slice(0, -2);
+  }
+
+  if (/s$/i.test(word)) {
+    return word.slice(0, -1);
+  }
+
+  return word;
+}
+
+function pluralizeLastWord(term: string) {
+  const words = term.trim().split(/\s+/);
+  const lastWord = words[words.length - 1];
+
+  if (!lastWord || lastWord.length <= 2 || /s$/i.test(lastWord)) {
+    return term.trim();
+  }
+
+  const pluralLastWord = /[^aeiou]y$/i.test(lastWord)
+    ? `${lastWord.slice(0, -1)}ies`
+    : /(ch|sh|x|z)$/i.test(lastWord)
+      ? `${lastWord}es`
+      : `${lastWord}s`;
+
+  return [...words.slice(0, -1), pluralLastWord].join(" ");
+}
+
+function getTermKey(term: string) {
+  return singularizeLastWord(term).toLocaleLowerCase();
+}
+
+function getTermUsageVariants(term: string) {
+  const singularTerm = singularizeLastWord(term);
+  const pluralTerm = pluralizeLastWord(singularTerm);
+
+  return uniqueValues([term.trim(), singularTerm, pluralTerm].filter(Boolean));
+}
+
+function getConfidenceRank(confidenceLabel: string) {
+  return confidenceLabel === "Likely defined term" ? 2 : 1;
 }
 
 function isLikelyQuotedDefinedTerm(value: string) {
@@ -53,15 +125,35 @@ function addDefinedTermResult(
   confidenceLabel: string,
 ) {
   const normalizedTerm = term.trim();
+  const termKey = getTermKey(normalizedTerm);
+  const canonicalTerm = singularizeLastWord(normalizedTerm);
 
-  if (!normalizedTerm || resultsByTerm.has(normalizedTerm)) {
+  if (!normalizedTerm) {
     return;
   }
 
-  resultsByTerm.set(normalizedTerm, {
-    term: normalizedTerm,
+  const existingResult = resultsByTerm.get(termKey);
+
+  if (existingResult) {
+    const detectedVariants = uniqueValues([...existingResult.detectedVariants, normalizedTerm]);
+    const shouldReplaceDefinition = getConfidenceRank(confidenceLabel) > getConfidenceRank(existingResult.confidenceLabel);
+
+    resultsByTerm.set(termKey, {
+      ...existingResult,
+      detectedVariants,
+      definitionText: shouldReplaceDefinition ? definitionText : existingResult.definitionText,
+      usageCount: countTermUsage(documentText, canonicalTerm),
+      patternLabel: shouldReplaceDefinition ? patternLabel : existingResult.patternLabel,
+      confidenceLabel: shouldReplaceDefinition ? confidenceLabel : existingResult.confidenceLabel,
+    });
+    return;
+  }
+
+  resultsByTerm.set(termKey, {
+    term: canonicalTerm,
+    detectedVariants: [normalizedTerm],
     definitionText,
-    usageCount: countTermUsage(documentText, normalizedTerm),
+    usageCount: countTermUsage(documentText, canonicalTerm),
     patternLabel,
     confidenceLabel,
   });
@@ -278,6 +370,11 @@ export function App() {
                 <p className="term-meta">
                   {result.confidenceLabel}: <strong>{result.patternLabel}</strong>
                 </p>
+                {result.detectedVariants.length > 1 ? (
+                  <p className="term-meta">
+                    Detected variants: <strong>{result.detectedVariants.join(", ")}</strong>
+                  </p>
+                ) : null}
                 <p className="term-meta">
                   Potential usage count: <strong>{result.usageCount.toLocaleString()}</strong>
                 </p>
