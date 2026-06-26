@@ -138,6 +138,53 @@ pre {
   list-style: none;
 }
 
+.potential-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid #d9dee7;
+  padding-bottom: 16px;
+}
+
+.potential-issues h2,
+.issue-group h3 {
+  margin: 0;
+  color: #102033;
+  line-height: 1.25;
+}
+
+.potential-issues h2 {
+  font-size: 1.12rem;
+}
+
+.issue-group h3 {
+  font-size: 0.92rem;
+}
+
+.issue-group ul {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.issue-group li {
+  color: #394957;
+  line-height: 1.4;
+}
+
+.issue-group strong,
+.issue-group span {
+  display: block;
+}
+
+.issue-group span {
+  margin-top: 2px;
+  color: #506070;
+  font-size: 0.92rem;
+}
+
 .defined-term-item {
   border-top: 1px solid #d9dee7;
   padding-top: 14px;

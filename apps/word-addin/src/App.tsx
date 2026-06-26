@@ -1,10 +1,30 @@
 import { useEffect, useState } from "react";
-import { extractDefinedTerms, type DefinedTermResult } from "@contractr/contract-core";
+import {
+  extractDefinedTerms,
+  findDefinedButUnusedTerms,
+  findPotentialUndefinedTerms,
+  findSimilarDefinedTerms,
+  type DefinedTermResult,
+  type FindPotentialUndefinedTermsResult,
+  type SimilarDefinedTermsResult,
+} from "@contractr/contract-core";
 
 type OfficeState = "loading" | "ready" | "unavailable";
 type OutputKind = "selected" | "document" | "definedTerms";
 
 const fullDocumentPreviewLimit = 2500;
+
+type PotentialIssues = {
+  definedButUnusedTerms: DefinedTermResult[];
+  potentialUndefinedTerms: FindPotentialUndefinedTermsResult[];
+  similarDefinedTerms: SimilarDefinedTermsResult[];
+};
+
+const emptyPotentialIssues: PotentialIssues = {
+  definedButUnusedTerms: [],
+  potentialUndefinedTerms: [],
+  similarDefinedTerms: [],
+};
 
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeState>("loading");
@@ -12,6 +32,7 @@ export function App() {
   const [outputKind, setOutputKind] = useState<OutputKind>("selected");
   const [characterCount, setCharacterCount] = useState<number | null>(null);
   const [definedTerms, setDefinedTerms] = useState<DefinedTermResult[]>([]);
+  const [potentialIssues, setPotentialIssues] = useState<PotentialIssues>(emptyPotentialIssues);
   const [message, setMessage] = useState("Select text in Word, then click the button.");
 
   useEffect(() => {
@@ -49,6 +70,7 @@ export function App() {
         setOutputText(text);
         setCharacterCount(null);
         setDefinedTerms([]);
+        setPotentialIssues(emptyPotentialIssues);
         setMessage(text ? "Selected text:" : "No text is selected. Select text in Word and try again.");
       });
     } catch (error) {
@@ -57,6 +79,7 @@ export function App() {
       setOutputText("");
       setCharacterCount(null);
       setDefinedTerms([]);
+      setPotentialIssues(emptyPotentialIssues);
       setMessage("Contractr could not read the selected text. Please try again.");
     }
   }
@@ -86,6 +109,7 @@ export function App() {
         setOutputText(preview);
         setCharacterCount(text.length);
         setDefinedTerms([]);
+        setPotentialIssues(emptyPotentialIssues);
         setMessage(text ? "Full document preview:" : "This document appears to be empty.");
       });
     } catch (error) {
@@ -94,6 +118,7 @@ export function App() {
       setOutputText("");
       setCharacterCount(null);
       setDefinedTerms([]);
+      setPotentialIssues(emptyPotentialIssues);
       setMessage("Contractr could not read the full document. Please check that a Word document is open and try again.");
     }
   }
@@ -115,11 +140,17 @@ export function App() {
           .join("\n\n")
           .trim();
         const results = extractDefinedTerms(text);
+        const issues: PotentialIssues = {
+          definedButUnusedTerms: findDefinedButUnusedTerms(text, results),
+          potentialUndefinedTerms: findPotentialUndefinedTerms(text, results),
+          similarDefinedTerms: findSimilarDefinedTerms(results),
+        };
 
         setOutputKind("definedTerms");
         setOutputText("");
         setCharacterCount(text.length);
         setDefinedTerms(results);
+        setPotentialIssues(issues);
         setMessage(
           results.length
             ? `Found ${results.length.toLocaleString()} likely defined term${results.length === 1 ? "" : "s"}.`
@@ -132,9 +163,15 @@ export function App() {
       setOutputText("");
       setCharacterCount(null);
       setDefinedTerms([]);
+      setPotentialIssues(emptyPotentialIssues);
       setMessage("Contractr could not analyze defined terms. Please check that a Word document is open and try again.");
     }
   }
+
+  const issueCount =
+    potentialIssues.definedButUnusedTerms.length +
+    potentialIssues.potentialUndefinedTerms.length +
+    potentialIssues.similarDefinedTerms.length;
 
   return (
     <main className="app-shell">
@@ -158,27 +195,83 @@ export function App() {
         {(outputKind === "document" || outputKind === "definedTerms") && characterCount !== null ? (
           <p className="count">{characterCount.toLocaleString()} characters</p>
         ) : null}
-        {outputKind === "definedTerms" && definedTerms.length ? (
-          <ol className="defined-term-list">
-            {definedTerms.map((result) => (
-              <li className="defined-term-item" key={result.term}>
-                <h2>{result.term}</h2>
-                <p className="term-meta">
-                  {result.confidenceLabel}: <strong>{result.patternLabel}</strong>
-                </p>
-                {result.detectedVariants.length > 1 ? (
-                  <p className="term-meta">
-                    Detected variants: <strong>{result.detectedVariants.join(", ")}</strong>
-                  </p>
-                ) : null}
-                <p className="term-meta">
-                  Potential usage count: <strong>{result.usageCount.toLocaleString()}</strong>
-                </p>
-                <p className="definition-label">Likely source paragraph</p>
-                <p className="definition-text">{result.definitionText}</p>
-              </li>
-            ))}
-          </ol>
+        {outputKind === "definedTerms" && (definedTerms.length || issueCount) ? (
+          <>
+            <section className="potential-issues" aria-labelledby="potential-issues-heading">
+              <h2 id="potential-issues-heading">Potential Issues</h2>
+              {issueCount ? (
+                <>
+                  {potentialIssues.definedButUnusedTerms.length ? (
+                    <div className="issue-group">
+                      <h3>Defined but unused</h3>
+                      <ul>
+                        {potentialIssues.definedButUnusedTerms.map((issue) => (
+                          <li key={issue.term}>
+                            <strong>{issue.term}</strong>
+                            <span>Potentially no meaningful usage outside its own definition.</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {potentialIssues.potentialUndefinedTerms.length ? (
+                    <div className="issue-group">
+                      <h3>Potentially undefined</h3>
+                      <ul>
+                        {potentialIssues.potentialUndefinedTerms.map((issue) => (
+                          <li key={issue.term}>
+                            <strong>{issue.term}</strong>
+                            <span>
+                              {issue.usageCount.toLocaleString()} appearances. {issue.reason}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {potentialIssues.similarDefinedTerms.length ? (
+                    <div className="issue-group">
+                      <h3>Similar-looking terms</h3>
+                      <ul>
+                        {potentialIssues.similarDefinedTerms.map((issue) => (
+                          <li key={`${issue.firstTerm}-${issue.secondTerm}`}>
+                            <strong>
+                              {issue.firstTerm} / {issue.secondTerm}
+                            </strong>
+                            <span>{issue.reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p className="term-meta">No potential defined-term issues found using the current deterministic checks.</p>
+              )}
+            </section>
+            {definedTerms.length ? (
+              <ol className="defined-term-list">
+                {definedTerms.map((result) => (
+                  <li className="defined-term-item" key={result.term}>
+                    <h2>{result.term}</h2>
+                    <p className="term-meta">
+                      {result.confidenceLabel}: <strong>{result.patternLabel}</strong>
+                    </p>
+                    {result.detectedVariants.length > 1 ? (
+                      <p className="term-meta">
+                        Detected variants: <strong>{result.detectedVariants.join(", ")}</strong>
+                      </p>
+                    ) : null}
+                    <p className="term-meta">
+                      Potential usage count: <strong>{result.usageCount.toLocaleString()}</strong>
+                    </p>
+                    <p className="definition-label">Likely source paragraph</p>
+                    <p className="definition-text">{result.definitionText}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </>
         ) : null}
         {outputText ? <pre>{outputText}</pre> : null}
       </section>

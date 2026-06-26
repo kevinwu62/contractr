@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 4 — Contract-Core Refactor  
-**Last completed milestone:** Step 3 — Defined-term detection  
-**Next task:** Retest `Analyze Defined Terms` in Word for Mac with the fake Contractr test agreement after the `contract-core` refactor.
+**Current milestone:** Step 5 — Defined-Term Quality Checks  
+**Last completed milestone:** Step 4 — Contract-Core Refactor  
+**Next task:** Retest `Analyze Defined Terms` in Word for Mac with the fake Contractr test agreement and confirm the new `Potential Issues` section appears.
 
 ---
 
@@ -196,7 +196,7 @@ Notes:
   - `extractDefinedTerms(documentText)`
   - `countTermUsages(documentText, term, options)`
   - `findDefinedButUnusedTerms(documentText, definedTerms)`
-  - `findPotentialUndefinedTerms(documentText, definedTerms)` as a clear Step 5 placeholder returning an empty list.
+  - `findPotentialUndefinedTerms(documentText, definedTerms)`, initially added as a Step 5 placeholder and completed during Step 5.
 - Moved Step 3 defined-term extraction, parenthetical/quoted term detection, singular/plural grouping, source-paragraph exclusion, and phrase-boundary usage counting into `packages/contract-core/src/definedTerms.ts`.
 - Updated the Word add-in to import `extractDefinedTerms` and `DefinedTermResult` from `@contractr/contract-core`.
 - Added TypeScript and Vite aliases so the add-in can import the local package without adding a new monorepo manager yet.
@@ -211,7 +211,7 @@ Notes:
 
 ### Step 5 — Defined-Term Quality Checks
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
@@ -219,12 +219,12 @@ Flag common definition-related drafting issues.
 
 Tasks:
 
-- [ ] Detect defined but unused terms.
-- [ ] Detect potentially undefined capitalized terms.
-- [ ] Detect similar-looking terms.
-- [ ] Add `Potential Issues` sidebar section.
-- [ ] Label outputs as potential issues, not definitive errors.
-- [ ] Test with dummy contract.
+- [x] Detect defined but unused terms.
+- [x] Detect potentially undefined capitalized terms.
+- [x] Detect similar-looking terms.
+- [x] Add `Potential Issues` sidebar section.
+- [x] Label outputs as potential issues, not definitive errors.
+- [x] Test with dummy contract at code/smoke-check level.
 - [ ] Commit working feature.
 
 Definition of done:
@@ -239,7 +239,27 @@ Suggested commit message:
 
 Notes:
 
--
+- Added deterministic issue-checking functions in `packages/contract-core`:
+  - `findDefinedButUnusedTerms(documentText, definedTerms)`
+  - `findPotentialUndefinedTerms(documentText, definedTerms)`
+  - `findSimilarDefinedTerms(definedTerms)`
+- Updated the Word task pane so `Analyze Defined Terms` also displays a `Potential Issues` section above the defined-term list.
+- Defined-but-unused terms are flagged when the existing usage counter finds no usage outside the detected source paragraph.
+- Potentially undefined terms are repeated capitalized words or short capitalized phrases that are not already in the detected defined-term list and are not obvious one-line headings or common section words.
+- Similar-looking terms are flagged when singular/plural variants are detected, one defined term appears contained inside another, or terms share a simple word stem.
+- All issue output is labelled as potential, not definitive legal drafting errors.
+- Known limitation: the potentially undefined-term heuristic is intentionally simple and can still produce false positives for party names, proper nouns, headings, document titles, or ordinary capitalized contract style.
+- Known limitation: similar-looking term detection is conservative and string-based; it does not understand legal meaning.
+- In-place validation remains affected by local dataless/read issues:
+  - `npm run typecheck` is blocked by `Resource deadlock avoided` on `node_modules/.bin/tsc`.
+  - `npm run build` is blocked by `Resource deadlock avoided` on `node_modules/.bin/tsc`.
+  - `xmllint --noout manifest.xml` is blocked by `Resource deadlock avoided` / empty manifest reads.
+- Workaround validation in `/tmp/contractr-step5-check` succeeded:
+  - `npm install` passed.
+  - `npm run typecheck` passed.
+  - `npm run build` passed.
+  - Direct `contract-core` smoke check passed for defined-but-unused, potentially undefined, and similar-looking term examples.
+- Suggested commit message: `Add defined term quality checks`
 
 ---
 

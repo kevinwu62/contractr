@@ -11,6 +11,13 @@ export type DefinedTermResult = {
 export type FindPotentialUndefinedTermsResult = {
   term: string;
   usageCount: number;
+  reason: string;
+};
+
+export type SimilarDefinedTermsResult = {
+  firstTerm: string;
+  secondTerm: string;
+  reason: string;
 };
 
 const definitionPatternLabels = [
@@ -311,10 +318,168 @@ export function findDefinedButUnusedTerms(documentText: string, definedTerms = e
   return definedTerms.filter((definedTerm) => definedTerm.usageCount === 0);
 }
 
+function normalizeCandidateTerm(term: string) {
+  return term.replace(/\s+/g, " ").trim().replace(/^(A|An|Any|Each|The|This)\s+/, "");
+}
+
+function isLikelyHeading(paragraph: string, candidate: string) {
+  const normalizedParagraph = normalizeCandidateTerm(paragraph.replace(/^[\d().\s]+/, ""));
+
+  return normalizedParagraph === candidate && candidate.length <= 80;
+}
+
+function getDefinedTermKeys(definedTerms: DefinedTermResult[]) {
+  return new Set(
+    definedTerms.flatMap((definedTerm) => [definedTerm.term, ...definedTerm.detectedVariants].map((term) => getTermKey(term))),
+  );
+}
+
+function getDefinedTermSourceParagraphs(definedTerms: DefinedTermResult[]) {
+  return new Set(definedTerms.flatMap((definedTerm) => definedTerm.sourceTexts));
+}
+
+function isPotentialUndefinedCandidate(candidate: string) {
+  const words = candidate.split(/\s+/);
+  const ignoredSingleWords = new Set([
+    "Agreement",
+    "Article",
+    "Exhibit",
+    "Party",
+    "Parties",
+    "Schedule",
+    "Section",
+  ]);
+
+  if (candidate.length < 4 || candidate.length > 80 || words.length > 5) {
+    return false;
+  }
+
+  if (words.length === 1 && ignoredSingleWords.has(candidate)) {
+    return false;
+  }
+
+  return words.every((word) => /^[A-Z][A-Za-z0-9'&-]*$/.test(word));
+}
+
 export function findPotentialUndefinedTerms(
-  _documentText: string,
-  _definedTerms: DefinedTermResult[],
+  documentText: string,
+  definedTerms = extractDefinedTerms(documentText),
 ): FindPotentialUndefinedTermsResult[] {
-  // Planned for Step 5. Keep this exported so UI and tests can target the contract-core API boundary.
-  return [];
+  const definedTermKeys = getDefinedTermKeys(definedTerms);
+  const definitionParagraphs = getDefinedTermSourceParagraphs(definedTerms);
+  const candidatesByKey = new Map<string, { term: string; count: number }>();
+  const capitalizedPhrasePattern =
+    /\b[A-Z][A-Za-z0-9'&-]*(?:\s+[A-Z][A-Za-z0-9'&-]*){0,4}\b/g;
+  const paragraphs = documentText
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    if (definitionParagraphs.has(paragraph)) {
+      continue;
+    }
+
+    for (const match of paragraph.matchAll(capitalizedPhrasePattern)) {
+      const candidate = normalizeCandidateTerm(match[0]);
+      const candidateKey = getTermKey(candidate);
+
+      if (
+        !isPotentialUndefinedCandidate(candidate) ||
+        definedTermKeys.has(candidateKey) ||
+        isLikelyHeading(paragraph, candidate)
+      ) {
+        continue;
+      }
+
+      const existingCandidate = candidatesByKey.get(candidateKey);
+
+      candidatesByKey.set(candidateKey, {
+        term: existingCandidate?.term ?? candidate,
+        count: (existingCandidate?.count ?? 0) + 1,
+      });
+    }
+  }
+
+  return Array.from(candidatesByKey.values())
+    .filter((candidate) => candidate.count > 1)
+    .map((candidate) => ({
+      term: candidate.term,
+      usageCount: candidate.count,
+      reason: "Repeated capitalized term or phrase not found in the defined-term list.",
+    }))
+    .sort((first, second) => second.usageCount - first.usageCount || first.term.localeCompare(second.term));
+}
+
+function getTermWords(term: string) {
+  return singularizeLastWord(term)
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function termsShareMeaningfulWord(firstTerm: string, secondTerm: string) {
+  const firstWords = getTermWords(firstTerm);
+  const secondWords = getTermWords(secondTerm);
+  const ignoredWords = new Set(["and", "or", "the"]);
+
+  return firstWords.some((firstWord) =>
+    firstWord.length > 4 && !ignoredWords.has(firstWord)
+      ? secondWords.some(
+          (secondWord) => secondWord === firstWord || secondWord.startsWith(firstWord) || firstWord.startsWith(secondWord),
+        )
+      : false,
+  );
+}
+
+function isTermContainedInOtherTerm(firstTerm: string, secondTerm: string) {
+  const firstWords = getTermWords(firstTerm);
+  const secondWords = getTermWords(secondTerm);
+  const shorterWords = firstWords.length <= secondWords.length ? firstWords : secondWords;
+  const longerWords = firstWords.length <= secondWords.length ? secondWords : firstWords;
+
+  return shorterWords.every((word) => longerWords.includes(word));
+}
+
+export function findSimilarDefinedTerms(definedTerms: DefinedTermResult[]): SimilarDefinedTermsResult[] {
+  const results: SimilarDefinedTermsResult[] = [];
+
+  for (const definedTerm of definedTerms) {
+    if (definedTerm.detectedVariants.length > 1) {
+      results.push({
+        firstTerm: definedTerm.detectedVariants[0],
+        secondTerm: definedTerm.detectedVariants.slice(1).join(", "),
+        reason: "Singular/plural variants were detected for the same defined term.",
+      });
+    }
+  }
+
+  for (let firstIndex = 0; firstIndex < definedTerms.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < definedTerms.length; secondIndex += 1) {
+      const firstTerm = definedTerms[firstIndex].term;
+      const secondTerm = definedTerms[secondIndex].term;
+
+      if (isTermContainedInOtherTerm(firstTerm, secondTerm)) {
+        results.push({
+          firstTerm,
+          secondTerm,
+          reason: "One defined term appears to be contained inside another defined term.",
+        });
+        continue;
+      }
+
+      if (termsShareMeaningfulWord(firstTerm, secondTerm)) {
+        results.push({
+          firstTerm,
+          secondTerm,
+          reason: "Defined terms share a similar word stem.",
+        });
+      }
+    }
+  }
+
+  return results.sort(
+    (first, second) =>
+      first.firstTerm.localeCompare(second.firstTerm) || first.secondTerm.localeCompare(second.secondTerm),
+  );
 }
