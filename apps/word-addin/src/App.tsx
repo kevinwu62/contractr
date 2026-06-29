@@ -1,19 +1,27 @@
 import { useEffect, useState } from "react";
 import {
   extractDefinedTerms,
+  extractPotentialObligations,
   findDefinedButUnusedTerms,
   findPotentialBrokenReferences,
   findPotentialUndefinedTerms,
   findSimilarDefinedTerms,
   type DefinedTermResult,
   type FindPotentialUndefinedTermsResult,
+  type PotentialObligation,
   type PotentialBrokenReference,
   type SimilarDefinedTermsResult,
 } from "@contractr/contract-core";
 
 type OfficeState = "loading" | "ready" | "unavailable";
-type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences";
-type ActiveAction = "readSelected" | "readDocument" | "analyzeDefinedTerms" | "analyzeCrossReferences" | "navigate";
+type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations";
+type ActiveAction =
+  | "readSelected"
+  | "readDocument"
+  | "analyzeDefinedTerms"
+  | "analyzeCrossReferences"
+  | "analyzeObligations"
+  | "navigate";
 
 const fullDocumentPreviewLimit = 2500;
 
@@ -158,8 +166,10 @@ export function App() {
   const [definedTerms, setDefinedTerms] = useState<DefinedTermResult[]>([]);
   const [potentialIssues, setPotentialIssues] = useState<PotentialIssues>(emptyPotentialIssues);
   const [crossReferenceIssues, setCrossReferenceIssues] = useState<CrossReferenceIssues>(emptyCrossReferenceIssues);
+  const [potentialObligations, setPotentialObligations] = useState<PotentialObligation[]>([]);
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
   const [hasAnalyzedCrossReferences, setHasAnalyzedCrossReferences] = useState(false);
+  const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
   const [message, setMessage] = useState("Select text in Word, then click the button.");
 
   useEffect(() => {
@@ -237,8 +247,10 @@ export function App() {
     setDefinedTerms([]);
     setPotentialIssues(emptyPotentialIssues);
     setCrossReferenceIssues(emptyCrossReferenceIssues);
+    setPotentialObligations([]);
     setHasAnalyzedDefinedTerms(false);
     setHasAnalyzedCrossReferences(false);
+    setHasAnalyzedObligations(false);
   }
 
   function canStartAction() {
@@ -304,8 +316,10 @@ export function App() {
       setDefinedTerms([]);
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
+      setPotentialObligations([]);
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
+      setHasAnalyzedObligations(false);
       setMessage("Contractr could not read the selected text. Please try again.");
     } finally {
       clearActiveAction("readSelected");
@@ -339,8 +353,10 @@ export function App() {
       setDefinedTerms([]);
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
+      setPotentialObligations([]);
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
+      setHasAnalyzedObligations(false);
       setMessage("Contractr could not read the full document. Please check that a Word document is open and try again.");
     } finally {
       clearActiveAction("readDocument");
@@ -426,6 +442,40 @@ export function App() {
     }
   }
 
+  async function analyzeFullDocumentObligations() {
+    if (!canStartAction()) {
+      return;
+    }
+
+    setActiveAction("analyzeObligations");
+
+    try {
+      const text = await readDocumentText();
+      const results = extractPotentialObligations(text);
+
+      setOutputKind("obligations");
+      setOutputText("");
+      setCharacterCount(text.length);
+      setPotentialObligations(results);
+      setHasAnalyzedObligations(true);
+      setMessage(
+        results.length
+          ? `Found ${results.length.toLocaleString()} potential obligation${results.length === 1 ? "" : "s"}.`
+          : "No potential obligations were found using the current deterministic patterns.",
+      );
+    } catch (error) {
+      console.error("Unable to analyze obligations.", error);
+      setOutputKind("obligations");
+      setOutputText("");
+      setCharacterCount(null);
+      setPotentialObligations([]);
+      setHasAnalyzedObligations(false);
+      setMessage("Contractr could not analyze obligations. Please check that a Word document is open and try again.");
+    } finally {
+      clearActiveAction("analyzeObligations");
+    }
+  }
+
   async function navigateToDocumentText(target: NavigationTarget) {
     if (!canStartAction()) {
       return;
@@ -499,18 +549,72 @@ export function App() {
       >
         {getButtonLabel("analyzeCrossReferences", "Analyze Cross-References")}
       </button>
+      <button
+        className="secondary-button"
+        disabled={isActionButtonDisabled("analyzeObligations")}
+        onClick={analyzeFullDocumentObligations}
+      >
+        {getButtonLabel("analyzeObligations", "Analyze Obligations")}
+      </button>
 
       <section className="output" aria-live="polite">
         <p className="status">{message}</p>
-        {(outputKind === "document" || outputKind === "definedTerms" || outputKind === "crossReferences") &&
+        {(outputKind === "document" ||
+          outputKind === "definedTerms" ||
+          outputKind === "crossReferences" ||
+          outputKind === "obligations") &&
         characterCount !== null ? (
           <p className="count">{characterCount.toLocaleString()} characters</p>
         ) : null}
         {outputKind === "definedTerms" ||
         outputKind === "crossReferences" ||
+        outputKind === "obligations" ||
         hasAnalyzedDefinedTerms ||
-        hasAnalyzedCrossReferences ? (
+        hasAnalyzedCrossReferences ||
+        hasAnalyzedObligations ? (
           <>
+            <section className="potential-issues" aria-labelledby="potential-obligations-heading">
+              <h2 id="potential-obligations-heading">Potential Obligations</h2>
+              {!hasAnalyzedObligations ? (
+                <p className="term-meta">Run Analyze Obligations to check likely duties and timing requirements.</p>
+              ) : potentialObligations.length ? (
+                <ol className="defined-term-list">
+                  {potentialObligations.map((obligation, index) => (
+                    <li className="defined-term-item" key={`${obligation.obligationText}-${index}`}>
+                      <h2>
+                        <button
+                          className="link-button defined-term-link"
+                          type="button"
+                          disabled={activeAction === "navigate"}
+                          onClick={() => navigateToDocumentText(getTermNavigationTarget(obligation.sourceNavigationText))}
+                        >
+                          {obligation.responsibleParty ?? "Possible responsible party not detected"}
+                        </button>
+                      </h2>
+                      <p className="term-meta">
+                        Trigger: <strong>{obligation.triggerText}</strong>
+                      </p>
+                      {obligation.sourceReference ? (
+                        <p className="term-meta">
+                          Source: <strong>{obligation.sourceReference}</strong>
+                        </p>
+                      ) : null}
+                      {obligation.deadlineOrTiming ? (
+                        <p className="term-meta">
+                          Timing: <strong>{obligation.deadlineOrTiming}</strong>
+                        </p>
+                      ) : null}
+                      <p className="definition-label">Potential obligation text</p>
+                      <p className="definition-text">{obligation.obligationText}</p>
+                      <p className="definition-label">Source snippet</p>
+                      <p className="definition-text">{obligation.sourceText}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="term-meta">No potential obligations were found using the current deterministic patterns.</p>
+              )}
+            </section>
             <section className="potential-issues" aria-labelledby="cross-reference-issues-heading">
               <h2 id="cross-reference-issues-heading">Cross-Reference Issues</h2>
               {!hasAnalyzedCrossReferences ? (

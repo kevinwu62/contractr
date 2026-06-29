@@ -10,6 +10,7 @@ export {
   detectCrossReferences,
   findPotentialBrokenReferences,
 } from "./crossReferences";
+export { extractPotentialObligations } from "./obligations";
 
 export type {
   DefinedTermResult,
@@ -22,3 +23,4 @@ export type {
   CrossReferenceType,
   PotentialBrokenReference,
 } from "./crossReferences";
+export type { PotentialObligation } from "./obligations";

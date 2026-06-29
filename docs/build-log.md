@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 6 — Document Navigation  
-**Last completed milestone:** Step 5 — Defined-Term Quality Checks  
-**Next task:** Retest Step 6 sidebar navigation in Word for Mac with the fake Contractr test agreement, especially parenthetical defined terms, then start Step 7 cross-reference checking.
+**Current milestone:** Step 8 — Obligation Tracker  
+**Last completed milestone:** Step 7 — Cross-Reference Checker  
+**Next task:** Retest the new `Analyze Obligations` flow in Word for Mac with the fake Contractr test agreement, including reload/open behavior and preserving defined-term and cross-reference results.
 
 ---
 
@@ -265,7 +265,7 @@ Notes:
 
 ### Step 6 — Document Navigation
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -278,13 +278,13 @@ Tasks:
 - [x] Show usage locations where feasible.
 - [x] Allow clicking a usage to jump to occurrence.
 - [x] Add basic highlighting or selection if feasible.
-- [ ] Test in Word on Mac.
+- [x] Test in Word on Mac.
 - [ ] Commit working feature.
 
 Definition of done:
 
 - [x] Clicking a sidebar item selects the relevant matching text in the Word document at code-validation level.
-- [ ] Confirm behavior manually in Word for Mac.
+- [x] Confirm behavior manually in Word for Mac.
 
 Suggested commit message:
 
@@ -302,6 +302,7 @@ Notes:
   - potentially undefined issues jump to the first matching term text;
   - similar-looking term issues jump to the first listed term text.
 - Navigation uses Office.js `body.search(...)` and selects the first matching range. No persistent anchors, comments, bookmarks, backend, database, AI, or full-document logging were added.
+- Kevin confirmed on 2026-06-29 that defined-term navigation works, including parenthetical and preamble definitions.
 - Known limitation: navigation re-searches the current Word document and can choose the first matching text if the same term appears many times.
 - Known limitation: first-version usage navigation does not list every usage location; it provides a safe `Jump to first usage` action only.
 - Known limitation: exact source-paragraph search may fail if Word normalizes punctuation, spacing, fields, or tracked-change text differently from the paragraph text read by Office.js; short definition snippets and fallback term search are used after that.
@@ -323,7 +324,7 @@ Notes:
 
 ### Step 7 — Cross-Reference Checker
 
-**Status:** Not started
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -331,19 +332,22 @@ Detect likely broken section, schedule, article, or exhibit references.
 
 Tasks:
 
-- [ ] Detect references to sections.
-- [ ] Detect references to articles.
-- [ ] Detect references to schedules.
-- [ ] Detect references to exhibits.
-- [ ] Detect actual headings.
-- [ ] Compare references against detected headings.
-- [ ] Display potential broken references.
-- [ ] Test with intentionally broken dummy contract.
+- [x] Detect references to sections.
+- [x] Detect references to articles.
+- [x] Detect references to schedules.
+- [x] Detect references to exhibits.
+- [x] Detect actual headings.
+- [x] Compare references against detected headings.
+- [x] Display potential broken references.
+- [x] Separate cross-reference checking into its own `Analyze Cross-References` action.
+- [x] Improve Office readiness/error handling so initialization failures are visible.
+- [x] Test with intentionally broken dummy contract in Word.
 - [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] Tool flags intentionally broken references in a dummy contract.
+- [x] Tool flags intentionally broken references in a code-level dummy contract.
+- [x] Tool flags intentionally broken references in the fake Contractr test agreement in Word.
 
 Suggested commit message:
 
@@ -351,13 +355,45 @@ Suggested commit message:
 
 Notes:
 
--
+- Added deterministic cross-reference logic in `packages/contract-core/src/crossReferences.ts`.
+- Exported reusable functions and types from `packages/contract-core/src/index.ts`.
+- Updated the Word task pane to display separate `Defined Terms`, `Potential Issues`, and `Cross-Reference Issues` result sections.
+- Cross-reference checking now runs from a separate `Analyze Cross-References` button instead of automatically running with `Analyze Defined Terms`.
+- `Analyze Defined Terms` now refreshes only defined-term results and defined-term potential issues.
+- `Analyze Cross-References` now refreshes only cross-reference issues and preserves existing defined-term results.
+- Detected references include `Section 2.1`, `Section 5.4(a)`, `Article VII`, `Schedule A`, and `Exhibit B`.
+- Detected headings include likely paragraph-start headings such as `2.1 Services`, `Section 5.4(a) Payment`, `ARTICLE VII`, `Schedule A`, and `Exhibit B`.
+- References and headings are normalized into simple keys like `section:2.1`, `section:5.4(a)`, `article:vii`, `schedule:a`, and `exhibit:b`, then compared exactly.
+- Results are labelled as `Potential Broken References`, not definitive legal errors.
+- Added per-action loading state for task pane buttons, so one failed/read/analyze action should not permanently grey out the entire UI.
+- Office initialization now uses the `Office.onReady()` promise path with a visible waiting/error message when Word or Office.js is not ready.
+- Likely cause of the intermittent greyed-out buttons issue: the UI only tracked broad Office readiness, so if Office startup hung, loaded slowly, or failed before `Office.onReady` reported Word, all buttons stayed disabled with limited visible explanation.
+- No AI, backend, database, authentication, persistent storage, or full-document logging was added.
+- In-place validation remains blocked by local dataless/offloaded-file reads:
+  - `npm run typecheck` is blocked by `Resource deadlock avoided` on `node_modules/.bin/tsc`.
+  - `npm run build` is blocked by `Resource deadlock avoided` on `node_modules/.bin/tsc`.
+  - `xmllint --noout manifest.xml` is blocked by `Resource deadlock avoided` / empty manifest reads.
+- 2026-06-29 UI-flow validation:
+  - In-place `npm run typecheck`, `npm run build`, and `xmllint --noout manifest.xml` are still blocked by local dataless/offloaded-file reads.
+  - Workaround validation in `/tmp/contractr-step7-ui-check` passed `npm run typecheck` against the edited UI wiring, using a temporary defined-term stub because local `definedTerms.ts` was offloaded during validation.
+  - Workaround validation in `/tmp/contractr-step7-ui-check` passed `npm run build` against the edited UI wiring, using the same temporary defined-term stub and a temporary Vite `index.html`/`main.tsx` because local entry files were offloaded during validation.
+  - Direct cross-reference smoke check passed: broken `Section 9.9`, `Schedule C`, and `Exhibit D` were flagged, while valid `Section 2.1`, `Section 5.4(a)`, `Schedule A`, and `Exhibit B` were not flagged.
+- Workaround validation in `/tmp/contractr-step7-check` passed:
+  - `npm install` passed.
+  - `npm run typecheck` passed against the Step 7 UI wiring and cross-reference module, using a temporary defined-term stub because the existing `definedTerms.ts` file was offloaded during validation.
+  - `npm run build` passed against the Step 7 UI wiring and cross-reference module, using the same temporary defined-term stub.
+  - Direct cross-reference smoke check passed: broken `Section 9.9`, `Schedule C`, and `Exhibit D` were flagged, while valid `Section 2.1`, `Section 5.4(a)`, `Schedule A`, and `Exhibit B` were not flagged.
+- Known limitation: first-version heading detection is paragraph/line based and may miss headings inside tables, headers, footers, fields, or heavily formatted Word structures if Office.js does not expose them as normal paragraph text.
+- Known limitation: cross-reference matching is exact after simple normalization; it does not yet understand ranges, grouped references, cross-document references, renamed attachments, or parent/child fallback logic.
+- Known limitation: legal documents with prose lines that look like headings, or headings that contain verbs/punctuation, may produce false positives or false negatives.
+- Known limitation: the readiness fix makes startup failures visible and recoverable in the UI, but Kevin still needs to retest repeated Word reload/open behavior because local iCloud/offloaded files are currently interfering with in-place dev-server validation.
+- Suggested commit message: `Separate cross-reference action and fix add-in readiness`
 
 ---
 
 ### Step 8 — Obligation Tracker
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
@@ -365,18 +401,20 @@ Extract likely contractual obligations into a table.
 
 Tasks:
 
-- [ ] Detect obligation language.
-- [ ] Extract likely responsible party.
-- [ ] Extract obligation sentence.
-- [ ] Extract obvious deadline if present.
-- [ ] Extract section/source if available.
-- [ ] Display results as `Potential Obligations`.
-- [ ] Test with dummy contract.
+- [x] Detect obligation language.
+- [x] Extract likely responsible party.
+- [x] Extract obligation sentence.
+- [x] Extract obvious deadline if present.
+- [x] Extract section/source if available.
+- [x] Display results as `Potential Obligations`.
+- [x] Test with dummy contract at code/smoke-check level.
+- [ ] Test with fake Contractr agreement in Word.
 - [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] Tool creates a rough obligation table from a sample contract.
+- [x] Tool creates a rough obligation table from a sample contract at code/smoke-check level.
+- [ ] Tool creates a rough obligation table from the fake Contractr agreement in Word.
 
 Suggested commit message:
 
@@ -384,7 +422,30 @@ Suggested commit message:
 
 Notes:
 
--
+- Added deterministic obligation extraction in `packages/contract-core/src/obligations.ts`.
+- Exported `extractPotentialObligations(documentText)` and the `PotentialObligation` type from `packages/contract-core/src/index.ts`.
+- Updated the Word task pane with a separate `Analyze Obligations` button and a separate `Potential Obligations` results section.
+- `Analyze Obligations` refreshes only obligation results and preserves existing defined-term, potential issue, and cross-reference results.
+- Detected obligation triggers include `shall`, `must`, `will`, `is required to`, `agrees to`, `covenants to`, `shall not`, and `must not`.
+- The first-version extractor splits document text into blank-line paragraphs, then sentence-like candidates, and labels each match as a potential obligation rather than a definitive legal conclusion.
+- Likely responsible party is extracted from the text before the obligation trigger where possible.
+- Timing extraction looks for simple phrases such as `within`, `no later than`, `on or before`, `prior to`, `before`, `after`, `by`, `upon`, `promptly`, `immediately`, `during`, `until`, and `following`.
+- Source reference extraction carries forward simple headings such as `Section 2.1`, `Article VII`, `Schedule A`, and `Exhibit B` when detected from paragraph starts.
+- No AI, backend, database, authentication, persistent storage, or full-document logging was added.
+- In-place validation remains blocked by local dataless/offloaded-file reads:
+  - `npm run typecheck` is blocked by `Resource deadlock avoided` on `node_modules/.bin/tsc`.
+  - `npm run build` is blocked by `Resource deadlock avoided` on `node_modules/.bin/tsc`.
+  - `xmllint --noout manifest.xml` is blocked by `Resource deadlock avoided` / empty manifest reads.
+- Workaround validation in `/tmp/contractr-step8-check` passed:
+  - `npm install` passed.
+  - `npm run typecheck` passed.
+  - `npm run build` passed.
+  - Direct obligation smoke check passed for `shall`, `must`, `shall not`, and `agrees to`, including responsible-party, timing, and section-source extraction.
+- Known limitation: first-version obligation extraction is deterministic and sentence-based; it can miss obligations split across multiple sentences, tables, schedules, headers, footers, or heavily formatted Word structures.
+- Known limitation: party extraction is simple text-before-trigger parsing and can be wrong for passive voice, long clauses, nested provisos, or party names introduced in prior sentences.
+- Known limitation: timing extraction only catches obvious timing phrases and does not normalize dates or calculate deadlines.
+- Known limitation: the `will` trigger may produce false positives where future-tense drafting is descriptive rather than an obligation.
+- Suggested commit message: `Add obligation tracker`
 
 ---
 
