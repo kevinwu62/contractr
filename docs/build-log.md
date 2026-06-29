@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 5 — Defined-Term Quality Checks  
-**Last completed milestone:** Step 4 — Contract-Core Refactor  
-**Next task:** Retest `Analyze Defined Terms` in Word for Mac with the fake Contractr test agreement and confirm the new `Potential Issues` section appears.
+**Current milestone:** Step 6 — Document Navigation  
+**Last completed milestone:** Step 5 — Defined-Term Quality Checks  
+**Next task:** Retest Step 6 sidebar navigation in Word for Mac with the fake Contractr test agreement, especially parenthetical defined terms, then start Step 7 cross-reference checking.
 
 ---
 
@@ -211,7 +211,7 @@ Notes:
 
 ### Step 5 — Defined-Term Quality Checks
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -229,9 +229,9 @@ Tasks:
 
 Definition of done:
 
-- [ ] Tool flags obvious unused definitions.
-- [ ] Tool flags repeated capitalized phrases that may be undefined.
-- [ ] Tool flags similar terms.
+- [x] Tool flags obvious unused definitions.
+- [x] Tool flags repeated capitalized phrases that may be undefined.
+- [x] Tool flags similar terms.
 
 Suggested commit message:
 
@@ -265,7 +265,7 @@ Notes:
 
 ### Step 6 — Document Navigation
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
@@ -273,17 +273,18 @@ Turn the sidebar into a usable contract map.
 
 Tasks:
 
-- [ ] Allow clicking a defined term.
-- [ ] Navigate to likely definition location.
-- [ ] Show usage locations where feasible.
-- [ ] Allow clicking a usage to jump to occurrence.
-- [ ] Add basic highlighting or selection if feasible.
+- [x] Allow clicking a defined term.
+- [x] Navigate to likely definition location.
+- [x] Show usage locations where feasible.
+- [x] Allow clicking a usage to jump to occurrence.
+- [x] Add basic highlighting or selection if feasible.
 - [ ] Test in Word on Mac.
 - [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] Clicking a sidebar item moves the user to the relevant part of the Word document.
+- [x] Clicking a sidebar item selects the relevant matching text in the Word document at code-validation level.
+- [ ] Confirm behavior manually in Word for Mac.
 
 Suggested commit message:
 
@@ -291,7 +292,32 @@ Suggested commit message:
 
 Notes:
 
--
+- Added first-version sidebar navigation in the Word task pane.
+- Fixed parenthetical defined-term navigation bug on 2026-06-26: clicking `Buyer`, `Seller`, or `Agreement` now tries short definition-shaped snippets before falling back to usage-style term search.
+- Defined-term names are now clickable and search for short likely definition snippets first, then fallback source/definition/term text.
+- Parenthetical/preamble definitions now add searchable candidates for straight-quote and smart-quote variants, including `(the "Term")`, `("Term")`, `(the “Term”)`, and `(“Term”)`.
+- Defined terms with non-definition usage counts now show `Jump to first usage`, which searches for the detected term or variant and selects the first matching range.
+- Potential issue terms are clickable where useful:
+  - defined-but-unused issues jump to the likely definition;
+  - potentially undefined issues jump to the first matching term text;
+  - similar-looking term issues jump to the first listed term text.
+- Navigation uses Office.js `body.search(...)` and selects the first matching range. No persistent anchors, comments, bookmarks, backend, database, AI, or full-document logging were added.
+- Known limitation: navigation re-searches the current Word document and can choose the first matching text if the same term appears many times.
+- Known limitation: first-version usage navigation does not list every usage location; it provides a safe `Jump to first usage` action only.
+- Known limitation: exact source-paragraph search may fail if Word normalizes punctuation, spacing, fields, or tracked-change text differently from the paragraph text read by Office.js; short definition snippets and fallback term search are used after that.
+- In-place validation was unreliable because iCloud had offloaded local repo and `node_modules` files as dataless placeholders, causing intermittent `Resource deadlock avoided` reads.
+- Validation succeeded in `/tmp/contractr-step6-check`, a clean temporary copy outside iCloud:
+  - `npm install` passed.
+  - `npm run typecheck` passed.
+  - `npm run build` passed.
+  - `xmllint --noout manifest.xml` passed.
+  - Direct `contract-core` smoke check passed for defined terms, unused terms, potentially undefined terms, and similar-term function execution.
+- 2026-06-26 parenthetical navigation validation:
+  - In-place `npm run typecheck` and `npm run build` were still blocked by local dataless/read errors on repo `node_modules`.
+  - In-place `xmllint --noout manifest.xml` passed.
+  - Clean temporary copy in `/tmp/contractr-validate` passed `npm ci`, `npm run typecheck`, and `npm run build`.
+  - Direct `contract-core` smoke check confirmed parenthetical `Buyer`, `Seller`, smart-quote `Agreement`, and normal `"Closing Date" means` definitions are still extracted with source paragraphs.
+- Suggested commit message: `Fix parenthetical defined term navigation`
 
 ---
 

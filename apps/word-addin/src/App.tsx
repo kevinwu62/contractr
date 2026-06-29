@@ -20,11 +20,123 @@ type PotentialIssues = {
   similarDefinedTerms: SimilarDefinedTermsResult[];
 };
 
+type NavigationTarget = {
+  candidates: string[];
+  successMessage: string;
+};
+
+const wordSearchCandidateLimit = 240;
+
 const emptyPotentialIssues: PotentialIssues = {
   definedButUnusedTerms: [],
   potentialUndefinedTerms: [],
   similarDefinedTerms: [],
 };
+
+function uniqueNonEmptyTexts(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean)));
+}
+
+function getSearchableTexts(values: string[]) {
+  return uniqueNonEmptyTexts(values).filter((value) => value.length <= wordSearchCandidateLimit);
+}
+
+function getDefinitionSourceSnippets(result: DefinedTermResult) {
+  const terms = getSearchableTexts([result.term, ...result.detectedVariants]).map((term) => term.toLocaleLowerCase());
+  const snippets: string[] = [];
+  const sourceSnippetPattern =
+    /\(\s*(?:the\s+)?["“][^"”\n]{1,120}["”]\s*\)|["“][^"”\n]{1,120}["”]\s+(?:means|shall mean|has the meaning|refers to)\b/gi;
+
+  for (const sourceText of result.sourceTexts) {
+    for (const match of sourceText.matchAll(sourceSnippetPattern)) {
+      const snippet = match[0];
+      const normalizedSnippet = snippet.toLocaleLowerCase();
+
+      if (terms.some((term) => normalizedSnippet.includes(term))) {
+        snippets.push(snippet);
+      }
+    }
+  }
+
+  return snippets;
+}
+
+function getDefinitionSourceContextCandidates(result: DefinedTermResult) {
+  const snippets = getDefinitionSourceSnippets(result);
+  const candidates: string[] = [];
+  const contextCharacterLimit = wordSearchCandidateLimit;
+
+  for (const sourceText of result.sourceTexts) {
+    candidates.push(sourceText);
+
+    for (const snippet of snippets) {
+      const snippetStart = sourceText.indexOf(snippet);
+
+      if (snippetStart === -1) {
+        continue;
+      }
+
+      const extraCharacterCount = Math.max(0, contextCharacterLimit - snippet.length);
+      const contextStart = Math.max(0, snippetStart - Math.floor(extraCharacterCount / 2));
+      const contextEnd = Math.min(sourceText.length, snippetStart + snippet.length + Math.ceil(extraCharacterCount / 2));
+
+      candidates.push(sourceText.slice(contextStart, contextEnd));
+    }
+  }
+
+  return getSearchableTexts(candidates);
+}
+
+function getParentheticalDefinitionCandidates(result: DefinedTermResult) {
+  return getSearchableTexts([result.term, ...result.detectedVariants]).flatMap((term) => [
+    `(the "${term}")`,
+    `("${term}")`,
+    `(the “${term}”)`,
+    `(“${term}”)`,
+  ]);
+}
+
+function getExplicitDefinitionCandidates(result: DefinedTermResult) {
+  return getSearchableTexts([result.term, ...result.detectedVariants]).flatMap((term) => [
+    `"${term}" means`,
+    `"${term}" shall mean`,
+    `"${term}" has the meaning`,
+    `"${term}" refers to`,
+    `“${term}” means`,
+    `“${term}” shall mean`,
+    `“${term}” has the meaning`,
+    `“${term}” refers to`,
+  ]);
+}
+
+function getDefinitionNavigationTarget(result: DefinedTermResult): NavigationTarget {
+  return {
+    candidates: getSearchableTexts([
+      ...getDefinitionSourceContextCandidates(result),
+      ...getDefinitionSourceSnippets(result),
+      ...getParentheticalDefinitionCandidates(result),
+      ...getExplicitDefinitionCandidates(result),
+      result.definitionText,
+      ...result.sourceTexts,
+      ...getUsageNavigationTarget(result).candidates,
+    ]),
+    successMessage: `Selected the likely definition for ${result.term}.`,
+  };
+}
+
+function getUsageNavigationTarget(result: DefinedTermResult): NavigationTarget {
+  return {
+    candidates: getSearchableTexts([...result.detectedVariants, result.term]),
+    successMessage: `Selected the first match for ${result.term}.`,
+  };
+}
+
+function getTermNavigationTarget(term: string): NavigationTarget {
+  return {
+    candidates: getSearchableTexts([term]),
+    successMessage: `Selected the first match for ${term}.`,
+  };
+}
 
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeState>("loading");
@@ -168,6 +280,40 @@ export function App() {
     }
   }
 
+  async function navigateToDocumentText(target: NavigationTarget) {
+    if (officeState !== "ready") {
+      return;
+    }
+
+    try {
+      await Word.run(async (context) => {
+        for (const candidate of target.candidates) {
+          const matches = context.document.body.search(candidate, {
+            ignorePunct: true,
+            ignoreSpace: true,
+            matchCase: false,
+            matchWholeWord: false,
+          });
+
+          matches.load("items");
+          await context.sync();
+
+          if (matches.items.length > 0) {
+            matches.items[0].select();
+            await context.sync();
+            setMessage(target.successMessage);
+            return;
+          }
+        }
+
+        setMessage("Contractr could not find that text in the current Word document.");
+      });
+    } catch (error) {
+      console.error("Unable to navigate in the document.", error);
+      setMessage("Contractr could not navigate to that text. Please try analyzing the document again.");
+    }
+  }
+
   const issueCount =
     potentialIssues.definedButUnusedTerms.length +
     potentialIssues.potentialUndefinedTerms.length +
@@ -207,7 +353,13 @@ export function App() {
                       <ul>
                         {potentialIssues.definedButUnusedTerms.map((issue) => (
                           <li key={issue.term}>
-                            <strong>{issue.term}</strong>
+                            <button
+                              className="link-button issue-link"
+                              type="button"
+                              onClick={() => navigateToDocumentText(getDefinitionNavigationTarget(issue))}
+                            >
+                              {issue.term}
+                            </button>
                             <span>Potentially no meaningful usage outside its own definition.</span>
                           </li>
                         ))}
@@ -220,7 +372,13 @@ export function App() {
                       <ul>
                         {potentialIssues.potentialUndefinedTerms.map((issue) => (
                           <li key={issue.term}>
-                            <strong>{issue.term}</strong>
+                            <button
+                              className="link-button issue-link"
+                              type="button"
+                              onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.term))}
+                            >
+                              {issue.term}
+                            </button>
                             <span>
                               {issue.usageCount.toLocaleString()} appearances. {issue.reason}
                             </span>
@@ -235,9 +393,13 @@ export function App() {
                       <ul>
                         {potentialIssues.similarDefinedTerms.map((issue) => (
                           <li key={`${issue.firstTerm}-${issue.secondTerm}`}>
-                            <strong>
+                            <button
+                              className="link-button issue-link"
+                              type="button"
+                              onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.firstTerm))}
+                            >
                               {issue.firstTerm} / {issue.secondTerm}
-                            </strong>
+                            </button>
                             <span>{issue.reason}</span>
                           </li>
                         ))}
@@ -253,7 +415,15 @@ export function App() {
               <ol className="defined-term-list">
                 {definedTerms.map((result) => (
                   <li className="defined-term-item" key={result.term}>
-                    <h2>{result.term}</h2>
+                    <h2>
+                      <button
+                        className="link-button defined-term-link"
+                        type="button"
+                        onClick={() => navigateToDocumentText(getDefinitionNavigationTarget(result))}
+                      >
+                        {result.term}
+                      </button>
+                    </h2>
                     <p className="term-meta">
                       {result.confidenceLabel}: <strong>{result.patternLabel}</strong>
                     </p>
@@ -265,6 +435,15 @@ export function App() {
                     <p className="term-meta">
                       Potential usage count: <strong>{result.usageCount.toLocaleString()}</strong>
                     </p>
+                    {result.usageCount > 0 ? (
+                      <button
+                        className="small-action-button"
+                        type="button"
+                        onClick={() => navigateToDocumentText(getUsageNavigationTarget(result))}
+                      >
+                        Jump to first usage
+                      </button>
+                    ) : null}
                     <p className="definition-label">Likely source paragraph</p>
                     <p className="definition-text">{result.definitionText}</p>
                   </li>

@@ -185,6 +185,32 @@ pre {
   font-size: 0.92rem;
 }
 
+.link-button {
+  border: 0;
+  background: transparent;
+  color: #155e75;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0;
+  text-align: left;
+}
+
+.link-button:hover {
+  color: #164e63;
+  text-decoration: underline;
+}
+
+.link-button:focus-visible,
+.small-action-button:focus-visible {
+  outline: 2px solid #155e75;
+  outline-offset: 3px;
+}
+
+.issue-link {
+  display: block;
+  line-height: 1.4;
+}
+
 .defined-term-item {
   border-top: 1px solid #d9dee7;
   padding-top: 14px;
@@ -200,6 +226,28 @@ pre {
   color: #102033;
   font-size: 1.12rem;
   line-height: 1.25;
+}
+
+.defined-term-link {
+  font-size: 1.12rem;
+  line-height: 1.25;
+}
+
+.small-action-button {
+  width: auto;
+  margin-top: 10px;
+  border: 1px solid #155e75;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #155e75;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 7px 9px;
+}
+
+.small-action-button:hover {
+  background: #e7f4f7;
 }
 
 .term-meta,

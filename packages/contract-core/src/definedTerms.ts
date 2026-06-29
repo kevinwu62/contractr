@@ -361,12 +361,28 @@ function isPotentialUndefinedCandidate(candidate: string) {
   return words.every((word) => /^[A-Z][A-Za-z0-9'&-]*$/.test(word));
 }
 
+function getCapitalizedCandidatePhrases(capitalizedRun: string) {
+  const words = capitalizedRun.trim().split(/\s+/).filter(Boolean);
+  const candidates: string[] = [];
+
+  if (words.length === 1) {
+    return [normalizeCandidateTerm(words[0])];
+  }
+
+  for (let startIndex = 0; startIndex < words.length; startIndex += 1) {
+    for (let endIndex = startIndex + 2; endIndex <= words.length; endIndex += 1) {
+      candidates.push(normalizeCandidateTerm(words.slice(startIndex, endIndex).join(" ")));
+    }
+  }
+
+  return uniqueValues(candidates.filter(Boolean));
+}
+
 export function findPotentialUndefinedTerms(
   documentText: string,
   definedTerms = extractDefinedTerms(documentText),
 ): FindPotentialUndefinedTermsResult[] {
   const definedTermKeys = getDefinedTermKeys(definedTerms);
-  const definitionParagraphs = getDefinedTermSourceParagraphs(definedTerms);
   const candidatesByKey = new Map<string, { term: string; count: number }>();
   const capitalizedPhrasePattern =
     /\b[A-Z][A-Za-z0-9'&-]*(?:\s+[A-Z][A-Za-z0-9'&-]*){0,4}\b/g;
@@ -376,28 +392,25 @@ export function findPotentialUndefinedTerms(
     .filter(Boolean);
 
   for (const paragraph of paragraphs) {
-    if (definitionParagraphs.has(paragraph)) {
-      continue;
-    }
-
     for (const match of paragraph.matchAll(capitalizedPhrasePattern)) {
-      const candidate = normalizeCandidateTerm(match[0]);
-      const candidateKey = getTermKey(candidate);
+      for (const candidate of getCapitalizedCandidatePhrases(match[0])) {
+        const candidateKey = getTermKey(candidate);
 
-      if (
-        !isPotentialUndefinedCandidate(candidate) ||
-        definedTermKeys.has(candidateKey) ||
-        isLikelyHeading(paragraph, candidate)
-      ) {
-        continue;
+        if (
+          !isPotentialUndefinedCandidate(candidate) ||
+          definedTermKeys.has(candidateKey) ||
+          isLikelyHeading(paragraph, candidate)
+        ) {
+          continue;
+        }
+
+        const existingCandidate = candidatesByKey.get(candidateKey);
+
+        candidatesByKey.set(candidateKey, {
+          term: existingCandidate?.term ?? candidate,
+          count: (existingCandidate?.count ?? 0) + 1,
+        });
       }
-
-      const existingCandidate = candidatesByKey.get(candidateKey);
-
-      candidatesByKey.set(candidateKey, {
-        term: existingCandidate?.term ?? candidate,
-        count: (existingCandidate?.count ?? 0) + 1,
-      });
     }
   }
 
