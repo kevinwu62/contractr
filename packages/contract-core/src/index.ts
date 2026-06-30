@@ -11,6 +11,7 @@ export {
   findPotentialBrokenReferences,
 } from "./crossReferences";
 export { extractPotentialObligations } from "./obligations";
+export { detectSelectionContext } from "./selectionContext";
 
 export type {
   DefinedTermResult,
@@ -24,3 +25,15 @@ export type {
   PotentialBrokenReference,
 } from "./crossReferences";
 export type { PotentialObligation } from "./obligations";
+export type {
+  SelectionActionId,
+  SelectionAvailableAction,
+  SelectionContext,
+  SelectionContextOptions,
+  SelectionConfirmedDefinedTerm,
+  SelectionDefinedTermCandidate,
+  SelectionKnownDefinedTerm,
+  SelectionObligationSignal,
+  SelectionReference,
+  SelectionReferenceType,
+} from "./selectionContext";

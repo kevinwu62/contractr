@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MockProvider, type ClauseAnalysisResult } from "@contractr/ai-adapters";
 import {
   extractDefinedTerms,
+  detectSelectionContext,
   extractPotentialObligations,
   findDefinedButUnusedTerms,
   findPotentialBrokenReferences,
@@ -11,8 +12,10 @@ import {
   type FindPotentialUndefinedTermsResult,
   type PotentialObligation,
   type PotentialBrokenReference,
+  type SelectionAvailableAction,
   type SimilarDefinedTermsResult,
 } from "@contractr/contract-core";
+import { readSelectedTextFromWordSelection } from "./wordSelection";
 
 type OfficeState = "loading" | "ready" | "unavailable";
 type ActiveMode = "selectR" | "analyzR";
@@ -163,6 +166,18 @@ function getTermNavigationTarget(term: string): NavigationTarget {
   };
 }
 
+function getSelectionActionStatusLabel(action: SelectionAvailableAction) {
+  if (action.status === "mockOnly") {
+    return "Mock-only placeholder";
+  }
+
+  if (action.status === "comingSoon") {
+    return "Coming in next step";
+  }
+
+  return "Available";
+}
+
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeState>("loading");
   const [activeMode, setActiveMode] = useState<ActiveMode>("selectR");
@@ -256,18 +271,8 @@ export function App() {
   }
 
   async function readSelectedTextFromWord() {
-    let text = "";
-
-    await Word.run(async (context) => {
-      const selection = context.document.getSelection();
-      selection.load("text");
-
-      await context.sync();
-
-      text = selection.text.trim();
-    });
-
-    return text;
+    const selection = await readSelectedTextFromWordSelection();
+    return selection.displayText;
   }
 
   async function refreshCurrentSelectionPreview() {
@@ -650,6 +655,19 @@ export function App() {
     potentialIssues.potentialUndefinedTerms.length +
     potentialIssues.similarDefinedTerms.length;
   const crossReferenceIssueCount = crossReferenceIssues.potentialBrokenReferences.length;
+  const currentSelectionContext = useMemo(
+    () =>
+      detectSelectionContext(currentSelectionText, {
+        knownDefinedTerms: hasAnalyzedDefinedTerms ? definedTerms : [],
+      }),
+    [currentSelectionText, definedTerms, hasAnalyzedDefinedTerms],
+  );
+  const hasDetectedSelectionElements =
+    currentSelectionContext.references.length > 0 ||
+    currentSelectionContext.confirmedDefinedTerms.length > 0 ||
+    currentSelectionContext.definedTermCandidates.length > 0 ||
+    currentSelectionContext.obligationSignals.length > 0 ||
+    currentSelectionContext.isClauseLike;
   const shouldShowMockExplanation = activeMode === "selectR" || outputKind === "clauseExplanation" || clauseExplanation;
   const shouldShowDocumentAnalysis =
     activeMode === "analyzR" ||
@@ -707,6 +725,96 @@ export function App() {
               </>
             ) : (
               <p className="term-meta">Select text in Word to see context-aware options.</p>
+            )}
+          </section>
+          <section className="selection-context" aria-labelledby="detected-elements-heading">
+            <h3 id="detected-elements-heading">Detected Elements</h3>
+            {!currentSelectionText ? (
+              <p className="term-meta">Select text in Word to detect references, defined terms, obligations, and clause-like text.</p>
+            ) : hasDetectedSelectionElements ? (
+              <div className="selection-detection-list">
+                {currentSelectionContext.references.length ? (
+                  <div className="selection-detection-group">
+                    <p className="definition-label">References</p>
+                    <ul>
+                      {currentSelectionContext.references.map((reference) => (
+                        <li key={`${reference.type}-${reference.referenceText}`}>
+                          <strong>{reference.referenceText}</strong>
+                          <span>{reference.type}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {currentSelectionContext.confirmedDefinedTerms.length ? (
+                  <div className="selection-detection-group">
+                    <p className="definition-label">Defined terms found in selection</p>
+                    <ul>
+                      {currentSelectionContext.confirmedDefinedTerms.map((definedTerm) => (
+                        <li key={`${definedTerm.term}-${definedTerm.matchedText}`}>
+                          <strong>{definedTerm.term}</strong>
+                          <span>
+                            Known defined term
+                            {definedTerm.matchedText !== definedTerm.term ? `, matched as ${definedTerm.matchedText}` : ""}
+                            {definedTerm.confidenceLabel ? ` (${definedTerm.confidenceLabel})` : ""}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {currentSelectionContext.definedTermCandidates.length ? (
+                  <div className="selection-detection-group">
+                    <p className="definition-label">Potential defined-term candidates</p>
+                    <ul>
+                      {currentSelectionContext.definedTermCandidates.map((candidate) => (
+                        <li key={`${candidate.source}-${candidate.term}`}>
+                          <strong>{candidate.term}</strong>
+                          <span>{candidate.source}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {!hasAnalyzedDefinedTerms ? (
+                  <p className="term-meta">Run Analyze Defined Terms in analyzR for more accurate selectR defined-term detection.</p>
+                ) : null}
+                {currentSelectionContext.obligationSignals.length ? (
+                  <div className="selection-detection-group">
+                    <p className="definition-label">Obligation language</p>
+                    <ul>
+                      {currentSelectionContext.obligationSignals.map((signal) => (
+                        <li key={signal.triggerText}>
+                          <strong>{signal.triggerText}</strong>
+                          <span>obligation trigger</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {currentSelectionContext.isClauseLike ? (
+                  <p className="term-meta">This selection is long enough to treat as clause-like text.</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="term-meta">No selection-specific elements were detected yet.</p>
+            )}
+          </section>
+          <section className="selection-context" aria-labelledby="available-actions-heading">
+            <h3 id="available-actions-heading">Available Actions</h3>
+            {!currentSelectionText ? (
+              <p className="term-meta">Available actions will appear after Contractr detects useful context in the selection.</p>
+            ) : currentSelectionContext.availableActions.length ? (
+              <div className="action-chip-list">
+                {currentSelectionContext.availableActions.map((action) => (
+                  <button className="action-chip" type="button" disabled key={action.id} title={action.reason}>
+                    <span>{action.label}</span>
+                    <small>{getSelectionActionStatusLabel(action)}</small>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="term-meta">No context-aware actions are available for this selection yet.</p>
             )}
           </section>
           <button className="primary-button" disabled={isActionButtonDisabled("readSelected")} onClick={readSelectedText}>

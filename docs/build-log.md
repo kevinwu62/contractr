@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 12 — Live Selection Preview
-**Last completed milestone:** Step 11 — selectR/analyzR UI Shell
-**Next task:** Retest live selected-text preview in Word for Mac with the fake Contractr test agreement, confirming the preview updates in `selectR` and existing manual actions still work.
+**Current milestone:** Step 13 — Selection-Based Action Detection
+**Last completed milestone:** Step 12 — Live Selection Preview
+**Next task:** Retest selectR selected-text line/paragraph break preservation in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -594,7 +594,7 @@ Notes:
 
 ### Step 12 — Live Selection Preview
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -612,7 +612,7 @@ Tasks:
 - [x] Do not automatically call `MockProvider` or deterministic analyzers.
 - [x] Do not add real AI, backend, database, auth, Next.js, API keys, or persistent selected-text storage.
 - [x] Run local validation.
-- [ ] Retest in Word with the fake Contractr test agreement.
+- [x] Retest in Word with the fake Contractr test agreement.
 - [ ] Commit working feature.
 
 Definition of done:
@@ -621,7 +621,7 @@ Definition of done:
 - [x] The preview updates through Office.js selection events when supported.
 - [x] A guarded fallback keeps the preview refreshable if selection events are unreliable.
 - [x] No automatic analysis or AI provider call runs from selection changes.
-- [ ] Kevin confirms live preview works in Word for Mac.
+- [x] Kevin confirms live preview works in Word for Mac.
 
 Suggested commit message:
 
@@ -645,10 +645,113 @@ Notes:
   - `xmllint --noout manifest.xml` in `apps/word-addin`
 - Known limitation: if Word selection events are unavailable or delayed, the preview may update on the fallback interval instead of instantly.
 - Known limitation: this step does not add automatic analysis, persistent action cards, or open-section-in-sidebar behavior.
+- Kevin confirmed Step 12 is complete and tested.
 
 ---
 
-### Step 13 — First Real AI Provider
+### Step 13 — Selection-Based Action Detection
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Detect useful context from the current `selectR` selection and show relevant available actions without automatically running them.
+
+Tasks:
+
+- [x] Add reusable deterministic selection-context detection in `packages/contract-core`.
+- [x] Detect section, article, schedule, and exhibit references.
+- [x] Detect quoted defined-term candidates and repeated capitalized-term candidates.
+- [x] Improve selectR defined-term detection by matching selected text against already analyzed whole-document defined terms.
+- [x] Keep confirmed known defined terms separate from potential defined-term candidates in the UI.
+- [x] Avoid partial known-term matches inside longer capitalized phrases such as `Service Provider`, `Closing Date`, and `Base Purchase Price`.
+- [x] Fix overlapping known-term matching so shorter terms are still detected when they appear as separate standalone occurrences.
+- [x] Preserve selected text line and paragraph breaks where Office.js exposes enough selection context.
+- [x] Detect obligation language such as `shall`, `must`, `will`, `agrees to`, `is required to`, and `shall not`.
+- [x] Detect clause-like selected text.
+- [x] Add `Detected Elements` under `Current Selection`.
+- [x] Add `Available Actions` under `Current Selection`.
+- [x] Show `Go to Section/Article` and `Open Section/Article in Sidebar` when section or article references are detected.
+- [x] Show `Analyze Defined Terms` when likely defined terms are detected.
+- [x] Show `Analyze Relevant Obligations` when obligation language is detected.
+- [x] Show `Edit with AI` as a mock-only placeholder when selected text appears clause-like.
+- [x] Keep actions as non-running placeholders for this step.
+- [x] Keep existing `selectR` and `analyzR` buttons working.
+- [x] Do not automatically run analysis or call `MockProvider` on selection changes.
+- [x] Do not add real AI, backend, database, authentication, Next.js, API keys, or persistent selected-text storage.
+- [x] Run local validation and contract-core smoke checks.
+- [ ] Retest in Word with the fake Contractr test agreement.
+- [ ] Commit working feature.
+
+Definition of done:
+
+- [x] `selectR` displays detected elements for selected text.
+- [x] `selectR` displays relevant available action placeholders.
+- [x] Detection logic is reusable from `contract-core`, not embedded in the UI.
+- [x] Selection changes do not automatically trigger analysis or AI.
+- [ ] Kevin confirms detection and action placeholders work in Word for Mac.
+
+Suggested commit message:
+
+`Preserve selected text line breaks`
+
+Notes:
+
+- Added `detectSelectionContext(selectedText, options)` in `packages/contract-core/src/selectionContext.ts`.
+- The helper returns structured references, confirmed known defined terms, potential defined-term candidates, obligation signals, a clause-like flag, and available actions.
+- The Word task pane derives detection output from `currentSelectionText` using `useMemo` and passes the existing analyzR `definedTerms` result when `Analyze Defined Terms` has already been run.
+- Known defined-term matching is boundary-aware and now uses span-based overlap filtering. Contractr first finds standalone occurrences for each known defined term, then rejects a shorter-term occurrence only when that specific character span sits inside a longer known-term match. This avoids globally suppressing shorter terms.
+- Fixed a selectR overlapping-term bug found after the first Step 13 improvement: `Service` could be suppressed too aggressively when `Service Provider` was also known. The corrected matcher detects `Service` when it appears separately, while still avoiding the embedded `Service` inside `Service Provider`.
+- Smoke checks confirmed:
+  - `The Buyer shall pay the Purchase Price on the Closing Date.` detects `Buyer`, `Purchase Price`, and `Closing Date` when those are known terms.
+  - `The Service Provider shall provide the Service.` detects both `Service Provider` and `Service`.
+  - `The Service Provider shall comply with this Agreement.` detects `Service Provider` and `Agreement`, but not `Service` merely because it appears inside `Service Provider`.
+  - `The Buyer shall pay the Base Purchase Price and the Purchase Price adjustment.` detects `Base Purchase Price`, `Buyer`, and the separate `Purchase Price` occurrence.
+  - `The Closing Date occurs after Closing.` detects both `Closing Date` and the separate `Closing` occurrence.
+  - `The Closing Date is July 1.` detects `Closing Date` and does not detect `Closing` merely inside `Closing Date`.
+- The UI now distinguishes `Defined terms found in selection` from `Potential defined-term candidates`.
+- If whole-document defined-term analysis has not been run yet, selectR shows `Run Analyze Defined Terms in analyzR for more accurate selectR defined-term detection.`
+- The UI renders `Detected Elements` and `Available Actions` below `Current Selection`.
+- Available actions are disabled placeholders in this step:
+  - `Go to Section/Article` — coming in next step.
+  - `Open Section/Article in Sidebar` — coming in next step.
+  - `Analyze Defined Terms` — coming in next step.
+  - `Analyze Relevant Obligations` — coming in next step.
+  - `Edit with AI` — mock-only placeholder.
+- This step did not change the existing manual `Read Selected Text`, `Explain Selected Clause`, `Read Full Document`, `Analyze Defined Terms`, `Analyze Cross-References`, or `Analyze Obligations` button behavior.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, full-document AI review, or selected-text logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - direct contract-core TypeScript check through the add-in's shared TypeScript binary
+  - bundled `detectSelectionContext` smoke check with `esbuild`
+- Follow-up validation for the standalone defined-term matching fix passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - bundled `detectSelectionContext` smoke check with `esbuild` for the overlapping standalone occurrence cases above
+- Fixed a selected-text formatting issue where multi-paragraph selections could appear as one flattened block in `selectR`.
+- Added a shared Word selection reader in `apps/word-addin/src/wordSelection.ts`.
+- The reader first tries `Office.context.document.getSelectedDataAsync(Office.CoercionType.Text)`, then reads the Word selection range text and selected paragraph collection through `context.document.getSelection()`.
+- When the exact selected text appears to match the selected paragraphs safely, Contractr joins selected paragraphs with blank lines for display and downstream selection features.
+- For partial selections across paragraphs, Contractr reconstructs paragraph-separated display text only when token-level matching proves the reconstructed text is the same selected content. If that check fails, it falls back to the exact selected range text to avoid over-including unselected paragraph text.
+- `definition-text` sidebar blocks now render with `white-space: pre-wrap`, so live Current Selection preview and Mock Clause Explanation selected-text preview show visible line and paragraph breaks.
+- Follow-up validation for selected-text formatting passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - bundled `wordSelection` smoke check with `esbuild` for full-paragraph reconstruction, partial two-paragraph reconstruction, fallback behavior, and normalized detection text
+- Known limitation: first-pass selection detection is regex-based and can miss unusual reference formats or produce false positives from ordinary capitalized prose.
+- Known limitation: confirmed selectR defined-term detection depends on running `Analyze Defined Terms` in `analyzR` first; otherwise Contractr only shows lower-confidence candidates.
+- Known limitation: candidate defined-term detection remains heuristic. It intentionally avoids confidently treating short standalone headings such as `General Provisions` as defined terms unless they are in the known defined-term list.
+- Known limitation: Word may expose selected paragraphs as whole paragraph text. Contractr avoids over-including unselected text, so unusual partial selections may still fall back to the flattened exact range text if safe paragraph reconstruction is not possible.
+- Known limitation: action chips are placeholders only; they do not navigate, open sections in the sidebar, or run selection-specific analyzers yet.
+- Known limitation: `Edit with AI` remains mock-only/coming-later and does not call any provider.
+
+---
+
+### Step 14 — First Real AI Provider
 
 **Status:** Not started
 
@@ -681,7 +784,7 @@ Notes:
 
 ---
 
-### Step 14 — Workplace-Safe Settings
+### Step 15 — Workplace-Safe Settings
 
 **Status:** Not started
 
@@ -714,7 +817,7 @@ Notes:
 
 ---
 
-### Step 15 — Demo Materials
+### Step 16 — Demo Materials
 
 **Status:** Not started
 
@@ -748,7 +851,7 @@ Notes:
 
 ---
 
-### Step 16 — Cross-Platform Testing
+### Step 17 — Cross-Platform Testing
 
 **Status:** Not started
 
@@ -794,7 +897,7 @@ Notes:
 
 ---
 
-### Step 17 — Enterprise Prep
+### Step 18 — Enterprise Prep
 
 **Status:** Not started
 
@@ -830,13 +933,16 @@ Notes:
 
 Move only the current milestone’s tasks here when work starts.
 
-- [x] Step 12: Add `Current Selection` section in `selectR`.
-- [x] Step 12: Register Office.js selection change handler where available.
-- [x] Step 12: Add guarded fallback refresh while `selectR` is active.
-- [x] Step 12: Keep manual selected-text and mock explanation buttons working.
-- [x] Step 12: Run local validation.
-- [ ] Step 12: Retest in Word on Mac with the fake Contractr test agreement.
-- [ ] Step 12: Commit working live selection preview.
+- [x] Step 13: Add reusable selection-context detection in `contract-core`.
+- [x] Step 13: Render `Detected Elements` in `selectR`.
+- [x] Step 13: Render `Available Actions` in `selectR`.
+- [x] Step 13: Improve selectR defined-term detection with known whole-document defined terms.
+- [x] Step 13: Preserve selected text line and paragraph breaks where feasible.
+- [x] Step 13: Keep action chips as placeholders only.
+- [x] Step 13: Keep existing `selectR` and `analyzR` actions working.
+- [x] Step 13: Run local validation and smoke checks.
+- [ ] Step 13: Retest in Word on Mac with the fake Contractr test agreement.
+- [ ] Step 13: Commit working selection-based action detection.
 
 ---
 
