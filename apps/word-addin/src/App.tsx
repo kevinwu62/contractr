@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MockProvider, type ClauseAnalysisResult } from "@contractr/ai-adapters";
 import {
   extractDefinedTerms,
@@ -28,6 +28,7 @@ type ActiveAction =
 
 const fullDocumentPreviewLimit = 2500;
 const selectedClausePreviewLimit = 1200;
+const liveSelectionPollIntervalMs = 2000;
 const aiProvider = new MockProvider();
 
 type PotentialIssues = {
@@ -175,10 +176,13 @@ export function App() {
   const [potentialObligations, setPotentialObligations] = useState<PotentialObligation[]>([]);
   const [clauseExplanation, setClauseExplanation] = useState<ClauseAnalysisResult | null>(null);
   const [clauseExplanationSelectedText, setClauseExplanationSelectedText] = useState("");
+  const [currentSelectionText, setCurrentSelectionText] = useState("");
+  const [currentSelectionError, setCurrentSelectionError] = useState("");
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
   const [hasAnalyzedCrossReferences, setHasAnalyzedCrossReferences] = useState(false);
   const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
   const [message, setMessage] = useState("Select text in Word, then click the button.");
+  const isSelectionRefreshRunningRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -266,6 +270,68 @@ export function App() {
     return text;
   }
 
+  async function refreshCurrentSelectionPreview() {
+    if (officeState !== "ready" || activeMode !== "selectR" || isSelectionRefreshRunningRef.current) {
+      return;
+    }
+
+    isSelectionRefreshRunningRef.current = true;
+
+    try {
+      const text = await readSelectedTextFromWord();
+
+      setCurrentSelectionText((previousText) => (previousText === text ? previousText : text));
+      setCurrentSelectionError("");
+    } catch (error) {
+      console.error("Unable to refresh current selection preview.", error);
+      setCurrentSelectionError("Contractr could not refresh the current selection preview.");
+    } finally {
+      isSelectionRefreshRunningRef.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (officeState !== "ready" || activeMode !== "selectR" || !window.Office?.context?.document) {
+      return;
+    }
+
+    let isMounted = true;
+    const handleSelectionChanged = () => {
+      if (isMounted) {
+        void refreshCurrentSelectionPreview();
+      }
+    };
+
+    void refreshCurrentSelectionPreview();
+
+    try {
+      Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, handleSelectionChanged, (result) => {
+        if (result.status === Office.AsyncResultStatus.Failed) {
+          console.warn("Office selection change event was not registered.", result.error);
+        }
+      });
+    } catch (error) {
+      console.warn("Office selection change event is not available in this Word host.", error);
+    }
+
+    const pollSelectionTimer = window.setInterval(() => {
+      if (isMounted) {
+        void refreshCurrentSelectionPreview();
+      }
+    }, liveSelectionPollIntervalMs);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(pollSelectionTimer);
+
+      try {
+        Office.context.document.removeHandlerAsync(Office.EventType.DocumentSelectionChanged, { handler: handleSelectionChanged });
+      } catch (error) {
+        console.warn("Office selection change event cleanup was skipped.", error);
+      }
+    };
+  }, [activeMode, officeState]);
+
   function resetAnalysisResults() {
     setDefinedTerms([]);
     setPotentialIssues(emptyPotentialIssues);
@@ -322,6 +388,7 @@ export function App() {
     try {
       const text = await readSelectedTextFromWord();
 
+      setCurrentSelectionText(text);
       setOutputKind("selected");
       setOutputText(text);
       setCharacterCount(null);
@@ -331,6 +398,7 @@ export function App() {
       console.error("Unable to read selected text.", error);
       setOutputKind("selected");
       setOutputText("");
+      setCurrentSelectionText("");
       setCharacterCount(null);
       setDefinedTerms([]);
       setPotentialIssues(emptyPotentialIssues);
@@ -509,6 +577,7 @@ export function App() {
     try {
       const text = await readSelectedTextFromWord();
 
+      setCurrentSelectionText(text);
       setOutputKind("clauseExplanation");
       setOutputText("");
       setCharacterCount(null);
@@ -623,6 +692,23 @@ export function App() {
         <section className="tool-group" aria-labelledby="selectr-heading">
           <h2 id="selectr-heading">selectR</h2>
           <p className="mode-description">selectR tools act on the text currently selected in Word.</p>
+          <section className="current-selection" aria-labelledby="current-selection-heading">
+            <h3 id="current-selection-heading">Current Selection</h3>
+            {currentSelectionError ? <p className="term-meta">{currentSelectionError}</p> : null}
+            {currentSelectionText ? (
+              <>
+                <p className="definition-text">
+                  {currentSelectionText.length > selectedClausePreviewLimit
+                    ? `${currentSelectionText.slice(0, selectedClausePreviewLimit).trimEnd()}...`
+                    : currentSelectionText}
+                </p>
+                <p className="term-meta">{currentSelectionText.length.toLocaleString()} characters</p>
+                <p className="term-meta">Actions will use this selected text only.</p>
+              </>
+            ) : (
+              <p className="term-meta">Select text in Word to see context-aware options.</p>
+            )}
+          </section>
           <button className="primary-button" disabled={isActionButtonDisabled("readSelected")} onClick={readSelectedText}>
             {getButtonLabel("readSelected", "Read Selected Text")}
           </button>

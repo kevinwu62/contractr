@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 11 — selectR/analyzR UI Shell
-**Last completed milestone:** Step 10 — Selected-Clause Explanation
-**Next task:** Retest the new `selectR`/`analyzR` mode switch in Word for Mac with the fake Contractr test agreement, confirming existing selected-text, full-document, defined-term, cross-reference, obligation, and mock clause explanation workflows still work.
+**Current milestone:** Step 12 — Live Selection Preview
+**Last completed milestone:** Step 11 — selectR/analyzR UI Shell
+**Next task:** Retest live selected-text preview in Word for Mac with the fake Contractr test agreement, confirming the preview updates in `selectR` and existing manual actions still work.
 
 ---
 
@@ -534,7 +534,7 @@ Notes:
 
 ### Step 11 — selectR/analyzR UI Shell
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -549,7 +549,7 @@ Tasks:
 - [x] Keep mock clause explanation clearly labelled as mock-only.
 - [x] Do not add live selection watching, action cards, routing, backend, database, auth, Next.js, or real AI providers.
 - [x] Run local validation.
-- [ ] Retest in Word with the fake Contractr test agreement.
+- [x] Retest in Word with the fake Contractr test agreement.
 - [ ] Commit working feature.
 
 Definition of done:
@@ -557,7 +557,7 @@ Definition of done:
 - [x] `selectR` shows `Read Selected Text` and `Explain Selected Clause`.
 - [x] `analyzR` shows `Read Full Document`, `Analyze Defined Terms`, `Analyze Cross-References`, and `Analyze Obligations`.
 - [x] Switching modes does not clear existing React result state.
-- [ ] Kevin confirms the mode shell works in Word for Mac.
+- [x] Kevin confirms the mode shell works in Word for Mac.
 
 Suggested commit message:
 
@@ -588,10 +588,67 @@ Notes:
   - bundled `MockProvider.explainClause` smoke check with `esbuild`
 - Known limitation: `selectR` does not automatically react to Word selection changes yet.
 - Known limitation: the UI shell does not yet include persistent action cards or open-section-in-sidebar behavior.
+- Kevin confirmed Step 11 is complete and tested.
 
 ---
 
-### Step 12 — First Real AI Provider
+### Step 12 — Live Selection Preview
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Show the current Word selection live in `selectR`.
+
+Tasks:
+
+- [x] Add a `Current Selection` section in `selectR`.
+- [x] Read the current Word selection into React UI state only.
+- [x] Register Office.js document selection change handling where available.
+- [x] Add a safe fallback refresh path while `selectR` is active.
+- [x] Show selected text preview, character count, and selected-text-only note.
+- [x] Show a friendly empty state when no text is selected.
+- [x] Keep manual `Read Selected Text` and `Explain Selected Clause` actions working.
+- [x] Do not automatically call `MockProvider` or deterministic analyzers.
+- [x] Do not add real AI, backend, database, auth, Next.js, API keys, or persistent selected-text storage.
+- [x] Run local validation.
+- [ ] Retest in Word with the fake Contractr test agreement.
+- [ ] Commit working feature.
+
+Definition of done:
+
+- [x] `selectR` displays a `Current Selection` section.
+- [x] The preview updates through Office.js selection events when supported.
+- [x] A guarded fallback keeps the preview refreshable if selection events are unreliable.
+- [x] No automatic analysis or AI provider call runs from selection changes.
+- [ ] Kevin confirms live preview works in Word for Mac.
+
+Suggested commit message:
+
+`Add live selection preview`
+
+Notes:
+
+- Added `currentSelectionText` and `currentSelectionError` state in the Word task pane.
+- Added `refreshCurrentSelectionPreview()`, which reads only `context.document.getSelection().text` and stores it in current React UI state.
+- Added `Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, ...)` while `selectR` is active.
+- Added a guarded 2-second polling fallback while `selectR` is active so the preview can still update if Word for Mac does not reliably fire selection-change events in the local add-in host.
+- Selection preview refreshes are skipped if another refresh is already running to avoid noisy overlapping Office.js reads.
+- Manual `Read Selected Text` and `Explain Selected Clause` also sync the `Current Selection` preview after reading the selected text.
+- The preview shows selected text, character count, and `Actions will use this selected text only.`
+- Empty state says `Select text in Word to see context-aware options.`
+- Selection changes do not call `MockProvider`, analyze defined terms, analyze obligations, analyze cross-references, or write selected text outside current UI state.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, full-document AI review, or selected-text logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+- Known limitation: if Word selection events are unavailable or delayed, the preview may update on the fallback interval instead of instantly.
+- Known limitation: this step does not add automatic analysis, persistent action cards, or open-section-in-sidebar behavior.
+
+---
+
+### Step 13 — First Real AI Provider
 
 **Status:** Not started
 
@@ -624,7 +681,7 @@ Notes:
 
 ---
 
-### Step 13 — Workplace-Safe Settings
+### Step 14 — Workplace-Safe Settings
 
 **Status:** Not started
 
@@ -657,7 +714,7 @@ Notes:
 
 ---
 
-### Step 14 — Demo Materials
+### Step 15 — Demo Materials
 
 **Status:** Not started
 
@@ -691,7 +748,7 @@ Notes:
 
 ---
 
-### Step 15 — Cross-Platform Testing
+### Step 16 — Cross-Platform Testing
 
 **Status:** Not started
 
@@ -737,7 +794,7 @@ Notes:
 
 ---
 
-### Step 16 — Enterprise Prep
+### Step 17 — Enterprise Prep
 
 **Status:** Not started
 
@@ -773,13 +830,13 @@ Notes:
 
 Move only the current milestone’s tasks here when work starts.
 
-- [x] Step 11: Add `selectR` / `analyzR` mode switch.
-- [x] Step 11: Move selection-based buttons into `selectR`.
-- [x] Step 11: Move whole-document analysis buttons into `analyzR`.
-- [x] Step 11: Keep existing result sections and mock-only labels working.
-- [x] Step 11: Run local validation.
-- [ ] Step 11: Retest in Word on Mac with the fake Contractr test agreement.
-- [ ] Step 11: Commit working UI shell.
+- [x] Step 12: Add `Current Selection` section in `selectR`.
+- [x] Step 12: Register Office.js selection change handler where available.
+- [x] Step 12: Add guarded fallback refresh while `selectR` is active.
+- [x] Step 12: Keep manual selected-text and mock explanation buttons working.
+- [x] Step 12: Run local validation.
+- [ ] Step 12: Retest in Word on Mac with the fake Contractr test agreement.
+- [ ] Step 12: Commit working live selection preview.
 
 ---
 

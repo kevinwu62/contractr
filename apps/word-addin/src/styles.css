@@ -122,6 +122,23 @@ h1 {
   line-height: 1.4;
 }
 
+.current-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.current-selection h3 {
+  margin: 0;
+  color: #102033;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
 .secondary-button {
   border: 1px solid #155e75;
   background: #ffffff;
