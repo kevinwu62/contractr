@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 8 — Obligation Tracker  
-**Last completed milestone:** Step 7 — Cross-Reference Checker  
-**Next task:** Retest the new `Analyze Obligations` flow in Word for Mac with the fake Contractr test agreement, including reload/open behavior and preserving defined-term and cross-reference results.
+**Current milestone:** Step 10 — Selected-Clause Explanation
+**Last completed milestone:** Step 9 — AI Adapter Layer
+**Next task:** Retest `Explain Selected Clause` in Word for Mac with the fake Contractr test agreement, while confirming existing selected-text, full-document, defined-term, cross-reference, and obligation workflows still work.
 
 ---
 
@@ -451,7 +451,7 @@ Notes:
 
 ### Step 9 — AI Adapter Layer
 
-**Status:** Not started
+**Status:** Done
 
 Goal:
 
@@ -459,17 +459,17 @@ Prepare for AI without locking Contractr into one provider.
 
 Tasks:
 
-- [ ] Create `packages/ai-adapters/`.
-- [ ] Define generic `AIProvider` interface.
-- [ ] Create `MockProvider`.
-- [ ] Make any AI-style UI call the generic provider interface.
-- [ ] Do not add real AI calls yet.
+- [x] Create `packages/ai-adapters/`.
+- [x] Define generic `AIProvider` interface.
+- [x] Create `MockProvider`.
+- [x] Make any AI-style UI call the generic provider interface.
+- [x] Do not add real AI calls yet.
 - [ ] Commit working interface.
 
 Definition of done:
 
-- [ ] App can call `MockProvider`.
-- [ ] No real contract text is sent to any external service.
+- [x] App can call `MockProvider`.
+- [x] No real contract text is sent to any external service.
 
 Suggested commit message:
 
@@ -477,13 +477,15 @@ Suggested commit message:
 
 Notes:
 
--
+- `packages/ai-adapters/` exists with a generic `AIProvider` interface and `MockProvider` only.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, `.env`, or API keys were added.
+- The adapter package is currently consumed by the Word add-in through local TypeScript/Vite aliases.
 
 ---
 
 ### Step 10 — Selected-Clause Explanation
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
@@ -491,18 +493,18 @@ Add first AI-style workflow using selected text only.
 
 Tasks:
 
-- [ ] Add `Explain Selected Clause` button.
-- [ ] Read selected text from Word.
-- [ ] Send selected text to configured `AIProvider`.
-- [ ] Display structured explanation.
-- [ ] Start with `MockProvider`.
-- [ ] Confirm full-contract AI review is not added.
+- [x] Add `Explain Selected Clause` button.
+- [x] Read selected text from Word.
+- [x] Send selected text to configured `AIProvider`.
+- [x] Display structured explanation.
+- [x] Start with `MockProvider`.
+- [x] Confirm full-contract AI review is not added.
 - [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] Selected clause explanation works with `MockProvider`.
-- [ ] Only selected text is used.
+- [x] Selected clause explanation works with `MockProvider` at code/build-validation level.
+- [x] Only selected text is used.
 
 Suggested commit message:
 
@@ -510,7 +512,23 @@ Suggested commit message:
 
 Notes:
 
--
+- Recovery after Kevin's MacBook crash found six Step 10 files modified and no partial `docs/build-log.md` update.
+- Added `Explain Selected Clause` to the Word task pane.
+- The new action reads only `context.document.getSelection().text`, then calls `MockProvider.explainClause({ selectedText })`.
+- Added a separate `Mock Clause Explanation` section with selected text preview, mock summary, mock explanation, mock review points, mock safety notes, and the label `Mock output only — no real AI provider was called.`
+- Existing deterministic outputs are not overwritten by the mock explanation flow.
+- `Read Selected Text`, `Read Full Document`, `Analyze Defined Terms`, `Analyze Cross-References`, and `Analyze Obligations` remain separate actions.
+- Added local TypeScript and Vite aliases for `@contractr/ai-adapters`.
+- Extended `ClauseAnalysisResult` with `explanation` and `reviewPoints` so the mock selected-clause response can be displayed as structured output.
+- No real AI provider, backend, database, authentication, Next.js, API keys, `.env`, full-document AI review, or external contract-text transmission was added.
+- In-place validation passed after recovery:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - `../../apps/word-addin/node_modules/.bin/tsc --noEmit -p tsconfig.json` in `packages/ai-adapters`
+  - bundled `MockProvider.explainClause` smoke check with `esbuild`
+- `npm run typecheck` directly inside `packages/ai-adapters` is not currently self-contained because that package has no local `node_modules`; the shared TypeScript binary from the add-in was used instead.
+- Manual Word retest still needed with the fake Contractr test agreement.
 
 ---
 

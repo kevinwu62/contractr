@@ -29,6 +29,8 @@ export type CompareToPlaybookInput = SelectedTextInput & {
 export type ClauseAnalysisResult = AIProviderMetadata & {
   title: string;
   summary: string;
+  explanation: string;
+  reviewPoints: string[];
   notes: string[];
 };
 

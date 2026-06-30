@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { getHttpsServerOptions } from "office-addin-dev-certs";
 import react from "@vitejs/plugin-react";
 
+const aiAdaptersEntry = new URL("../../packages/ai-adapters/src/index.ts", import.meta.url).pathname;
 const contractCoreEntry = new URL("../../packages/contract-core/src/index.ts", import.meta.url).pathname;
 
 export default defineConfig(async ({ command }) => {
@@ -11,6 +12,7 @@ export default defineConfig(async ({ command }) => {
     plugins: [react()],
     resolve: {
       alias: {
+        "@contractr/ai-adapters": aiAdaptersEntry,
         "@contractr/contract-core": contractCoreEntry,
       },
     },

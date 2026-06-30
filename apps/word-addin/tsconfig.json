@@ -13,6 +13,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
+      "@contractr/ai-adapters": ["../../packages/ai-adapters/src/index.ts"],
       "@contractr/contract-core": ["../../packages/contract-core/src/index.ts"]
     },
     "resolveJsonModule": true,
@@ -21,5 +22,5 @@
     "jsx": "react-jsx",
     "types": ["office-js"]
   },
-  "include": ["src", "vite.config.ts", "../../packages/contract-core/src"]
+  "include": ["src", "vite.config.ts", "../../packages/contract-core/src", "../../packages/ai-adapters/src"]
 }

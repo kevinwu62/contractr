@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MockProvider, type ClauseAnalysisResult } from "@contractr/ai-adapters";
 import {
   extractDefinedTerms,
   extractPotentialObligations,
@@ -14,16 +15,19 @@ import {
 } from "@contractr/contract-core";
 
 type OfficeState = "loading" | "ready" | "unavailable";
-type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations";
+type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations" | "clauseExplanation";
 type ActiveAction =
   | "readSelected"
   | "readDocument"
   | "analyzeDefinedTerms"
   | "analyzeCrossReferences"
   | "analyzeObligations"
+  | "explainSelectedClause"
   | "navigate";
 
 const fullDocumentPreviewLimit = 2500;
+const selectedClausePreviewLimit = 1200;
+const aiProvider = new MockProvider();
 
 type PotentialIssues = {
   definedButUnusedTerms: DefinedTermResult[];
@@ -167,6 +171,8 @@ export function App() {
   const [potentialIssues, setPotentialIssues] = useState<PotentialIssues>(emptyPotentialIssues);
   const [crossReferenceIssues, setCrossReferenceIssues] = useState<CrossReferenceIssues>(emptyCrossReferenceIssues);
   const [potentialObligations, setPotentialObligations] = useState<PotentialObligation[]>([]);
+  const [clauseExplanation, setClauseExplanation] = useState<ClauseAnalysisResult | null>(null);
+  const [clauseExplanationSelectedText, setClauseExplanationSelectedText] = useState("");
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
   const [hasAnalyzedCrossReferences, setHasAnalyzedCrossReferences] = useState(false);
   const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
@@ -243,11 +249,28 @@ export function App() {
     return text;
   }
 
+  async function readSelectedTextFromWord() {
+    let text = "";
+
+    await Word.run(async (context) => {
+      const selection = context.document.getSelection();
+      selection.load("text");
+
+      await context.sync();
+
+      text = selection.text.trim();
+    });
+
+    return text;
+  }
+
   function resetAnalysisResults() {
     setDefinedTerms([]);
     setPotentialIssues(emptyPotentialIssues);
     setCrossReferenceIssues(emptyCrossReferenceIssues);
     setPotentialObligations([]);
+    setClauseExplanation(null);
+    setClauseExplanationSelectedText("");
     setHasAnalyzedDefinedTerms(false);
     setHasAnalyzedCrossReferences(false);
     setHasAnalyzedObligations(false);
@@ -295,19 +318,13 @@ export function App() {
     setActiveAction("readSelected");
 
     try {
-      await Word.run(async (context) => {
-        const selection = context.document.getSelection();
-        selection.load("text");
+      const text = await readSelectedTextFromWord();
 
-        await context.sync();
-
-        const text = selection.text.trim();
-        setOutputKind("selected");
-        setOutputText(text);
-        setCharacterCount(null);
-        resetAnalysisResults();
-        setMessage(text ? "Selected text:" : "No text is selected. Select text in Word and try again.");
-      });
+      setOutputKind("selected");
+      setOutputText(text);
+      setCharacterCount(null);
+      resetAnalysisResults();
+      setMessage(text ? "Selected text:" : "No text is selected. Select text in Word and try again.");
     } catch (error) {
       console.error("Unable to read selected text.", error);
       setOutputKind("selected");
@@ -317,6 +334,8 @@ export function App() {
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
       setPotentialObligations([]);
+      setClauseExplanation(null);
+      setClauseExplanationSelectedText("");
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
       setHasAnalyzedObligations(false);
@@ -354,6 +373,8 @@ export function App() {
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
       setPotentialObligations([]);
+      setClauseExplanation(null);
+      setClauseExplanationSelectedText("");
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
       setHasAnalyzedObligations(false);
@@ -476,6 +497,45 @@ export function App() {
     }
   }
 
+  async function explainSelectedClause() {
+    if (!canStartAction()) {
+      return;
+    }
+
+    setActiveAction("explainSelectedClause");
+
+    try {
+      const text = await readSelectedTextFromWord();
+
+      setOutputKind("clauseExplanation");
+      setOutputText("");
+      setCharacterCount(null);
+
+      if (!text) {
+        setClauseExplanation(null);
+        setClauseExplanationSelectedText("");
+        setMessage("No clause text is selected. Select a clause in Word and try again.");
+        return;
+      }
+
+      const result = await aiProvider.explainClause({ selectedText: text });
+
+      setClauseExplanation(result);
+      setClauseExplanationSelectedText(text);
+      setMessage("Mock clause explanation:");
+    } catch (error) {
+      console.error("Unable to explain selected clause with the mock provider.", error);
+      setOutputKind("clauseExplanation");
+      setOutputText("");
+      setCharacterCount(null);
+      setClauseExplanation(null);
+      setClauseExplanationSelectedText("");
+      setMessage("Contractr could not explain the selected clause with the mock provider. Please try again.");
+    } finally {
+      clearActiveAction("explainSelectedClause");
+    }
+  }
+
   async function navigateToDocumentText(target: NavigationTarget) {
     if (!canStartAction()) {
       return;
@@ -556,6 +616,13 @@ export function App() {
       >
         {getButtonLabel("analyzeObligations", "Analyze Obligations")}
       </button>
+      <button
+        className="secondary-button"
+        disabled={isActionButtonDisabled("explainSelectedClause")}
+        onClick={explainSelectedClause}
+      >
+        {getButtonLabel("explainSelectedClause", "Explain Selected Clause")}
+      </button>
 
       <section className="output" aria-live="polite">
         <p className="status">{message}</p>
@@ -566,6 +633,42 @@ export function App() {
         characterCount !== null ? (
           <p className="count">{characterCount.toLocaleString()} characters</p>
         ) : null}
+        <section className="mock-explanation" aria-labelledby="mock-clause-explanation-heading">
+          <h2 id="mock-clause-explanation-heading">Mock Clause Explanation</h2>
+          <p className="mock-label">Mock output only — no real AI provider was called.</p>
+          {!clauseExplanation ? (
+            <p className="term-meta">Select a clause and click Explain Selected Clause to test the mock AI adapter.</p>
+          ) : (
+            <>
+              <p className="definition-label">Selected text preview</p>
+              <p className="definition-text">
+                {clauseExplanationSelectedText.length > selectedClausePreviewLimit
+                  ? `${clauseExplanationSelectedText.slice(0, selectedClausePreviewLimit).trimEnd()}...`
+                  : clauseExplanationSelectedText}
+              </p>
+              <p className="definition-label">Mock summary</p>
+              <p className="definition-text">{clauseExplanation.summary}</p>
+              <p className="definition-label">Mock explanation</p>
+              <p className="definition-text">{clauseExplanation.explanation}</p>
+              <div className="issue-group">
+                <h3>Mock review points</h3>
+                <ul>
+                  {clauseExplanation.reviewPoints.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="issue-group">
+                <h3>Mock safety notes</h3>
+                <ul>
+                  {clauseExplanation.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
+        </section>
         {outputKind === "definedTerms" ||
         outputKind === "crossReferences" ||
         outputKind === "obligations" ||

@@ -146,15 +146,36 @@ pre {
   padding-bottom: 16px;
 }
 
+.mock-explanation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-bottom: 1px solid #d9dee7;
+  padding-bottom: 16px;
+}
+
 .potential-issues h2,
+.mock-explanation h2,
 .issue-group h3 {
   margin: 0;
   color: #102033;
   line-height: 1.25;
 }
 
-.potential-issues h2 {
+.potential-issues h2,
+.mock-explanation h2 {
   font-size: 1.12rem;
+}
+
+.mock-label {
+  margin: 0;
+  border-left: 3px solid #155e75;
+  background: #e7f4f7;
+  color: #102033;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+  padding: 8px 10px;
 }
 
 .issue-group h3 {
