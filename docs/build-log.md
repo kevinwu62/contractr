@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 10 — Selected-Clause Explanation
-**Last completed milestone:** Step 9 — AI Adapter Layer
-**Next task:** Retest `Explain Selected Clause` in Word for Mac with the fake Contractr test agreement, while confirming existing selected-text, full-document, defined-term, cross-reference, and obligation workflows still work.
+**Current milestone:** Step 11 — selectR/analyzR UI Shell
+**Last completed milestone:** Step 10 — Selected-Clause Explanation
+**Next task:** Retest the new `selectR`/`analyzR` mode switch in Word for Mac with the fake Contractr test agreement, confirming existing selected-text, full-document, defined-term, cross-reference, obligation, and mock clause explanation workflows still work.
 
 ---
 
@@ -485,7 +485,7 @@ Notes:
 
 ### Step 10 — Selected-Clause Explanation
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -528,11 +528,70 @@ Notes:
   - `../../apps/word-addin/node_modules/.bin/tsc --noEmit -p tsconfig.json` in `packages/ai-adapters`
   - bundled `MockProvider.explainClause` smoke check with `esbuild`
 - `npm run typecheck` directly inside `packages/ai-adapters` is not currently self-contained because that package has no local `node_modules`; the shared TypeScript binary from the add-in was used instead.
-- Manual Word retest still needed with the fake Contractr test agreement.
+- Kevin confirmed Step 10 is complete and tested.
 
 ---
 
-### Step 11 — First Real AI Provider
+### Step 11 — selectR/analyzR UI Shell
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Organize the task pane around selection-based and whole-document modes.
+
+Tasks:
+
+- [x] Add a clear top-level mode switch for `selectR` and `analyzR`.
+- [x] Move selection-based tools into `selectR`.
+- [x] Move whole-document tools into `analyzR`.
+- [x] Keep existing result sections working.
+- [x] Keep mock clause explanation clearly labelled as mock-only.
+- [x] Do not add live selection watching, action cards, routing, backend, database, auth, Next.js, or real AI providers.
+- [x] Run local validation.
+- [ ] Retest in Word with the fake Contractr test agreement.
+- [ ] Commit working feature.
+
+Definition of done:
+
+- [x] `selectR` shows `Read Selected Text` and `Explain Selected Clause`.
+- [x] `analyzR` shows `Read Full Document`, `Analyze Defined Terms`, `Analyze Cross-References`, and `Analyze Obligations`.
+- [x] Switching modes does not clear existing React result state.
+- [ ] Kevin confirms the mode shell works in Word for Mac.
+
+Suggested commit message:
+
+`Add selectR and analyzR mode shell`
+
+Notes:
+
+- Added an `activeMode: "selectR" | "analyzR"` React state value in the Word task pane.
+- Added a simple two-button mode switch at the top of the sidebar.
+- `selectR` contains the selection-based tools:
+  - `Read Selected Text`
+  - `Explain Selected Clause`
+- `analyzR` contains whole-document tools:
+  - `Read Full Document`
+  - `Analyze Defined Terms`
+  - `Analyze Cross-References`
+  - `Analyze Obligations`
+- Added the `selectR tools act on the text currently selected in Word.` helper text.
+- Existing Office.js handlers were preserved; no contract-analysis logic was moved or rewritten.
+- Existing result state is not cleared when switching modes.
+- The mock explanation section remains labelled `Mock output only — no real AI provider was called.`
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, live selection watching, persistent action cards, or full-document AI review was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - `../../apps/word-addin/node_modules/.bin/tsc --noEmit -p tsconfig.json` in `packages/ai-adapters`
+  - bundled `MockProvider.explainClause` smoke check with `esbuild`
+- Known limitation: `selectR` does not automatically react to Word selection changes yet.
+- Known limitation: the UI shell does not yet include persistent action cards or open-section-in-sidebar behavior.
+
+---
+
+### Step 12 — First Real AI Provider
 
 **Status:** Not started
 
@@ -565,7 +624,7 @@ Notes:
 
 ---
 
-### Step 12 — Workplace-Safe Settings
+### Step 13 — Workplace-Safe Settings
 
 **Status:** Not started
 
@@ -598,7 +657,7 @@ Notes:
 
 ---
 
-### Step 13 — Demo Materials
+### Step 14 — Demo Materials
 
 **Status:** Not started
 
@@ -632,7 +691,7 @@ Notes:
 
 ---
 
-### Step 14 — Cross-Platform Testing
+### Step 15 — Cross-Platform Testing
 
 **Status:** Not started
 
@@ -678,7 +737,7 @@ Notes:
 
 ---
 
-### Step 15 — Enterprise Prep
+### Step 16 — Enterprise Prep
 
 **Status:** Not started
 
@@ -714,11 +773,13 @@ Notes:
 
 Move only the current milestone’s tasks here when work starts.
 
-- [ ] Step 1: Create `apps/word-addin/`.
-- [ ] Step 1: Generate initial Word task pane add-in.
-- [ ] Step 1: Add `Read Selected Text`.
-- [ ] Step 1: Test in Word on Mac.
-- [ ] Step 1: Commit working skeleton.
+- [x] Step 11: Add `selectR` / `analyzR` mode switch.
+- [x] Step 11: Move selection-based buttons into `selectR`.
+- [x] Step 11: Move whole-document analysis buttons into `analyzR`.
+- [x] Step 11: Keep existing result sections and mock-only labels working.
+- [x] Step 11: Run local validation.
+- [ ] Step 11: Retest in Word on Mac with the fake Contractr test agreement.
+- [ ] Step 11: Commit working UI shell.
 
 ---
 

@@ -15,6 +15,7 @@ import {
 } from "@contractr/contract-core";
 
 type OfficeState = "loading" | "ready" | "unavailable";
+type ActiveMode = "selectR" | "analyzR";
 type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations" | "clauseExplanation";
 type ActiveAction =
   | "readSelected"
@@ -163,6 +164,7 @@ function getTermNavigationTarget(term: string): NavigationTarget {
 
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeState>("loading");
+  const [activeMode, setActiveMode] = useState<ActiveMode>("selectR");
   const [activeAction, setActiveAction] = useState<ActiveAction | null>(null);
   const [outputText, setOutputText] = useState("");
   const [outputKind, setOutputKind] = useState<OutputKind>("selected");
@@ -579,6 +581,15 @@ export function App() {
     potentialIssues.potentialUndefinedTerms.length +
     potentialIssues.similarDefinedTerms.length;
   const crossReferenceIssueCount = crossReferenceIssues.potentialBrokenReferences.length;
+  const shouldShowMockExplanation = activeMode === "selectR" || outputKind === "clauseExplanation" || clauseExplanation;
+  const shouldShowDocumentAnalysis =
+    activeMode === "analyzR" ||
+    outputKind === "definedTerms" ||
+    outputKind === "crossReferences" ||
+    outputKind === "obligations" ||
+    hasAnalyzedDefinedTerms ||
+    hasAnalyzedCrossReferences ||
+    hasAnalyzedObligations;
 
   return (
     <main className="app-shell">
@@ -589,40 +600,70 @@ export function App() {
 
       {getReadyMessage() ? <p className="status">{getReadyMessage()}</p> : null}
 
-      <button className="primary-button" disabled={isActionButtonDisabled("readSelected")} onClick={readSelectedText}>
-        {getButtonLabel("readSelected", "Read Selected Text")}
-      </button>
-      <button className="secondary-button" disabled={isActionButtonDisabled("readDocument")} onClick={readFullDocument}>
-        {getButtonLabel("readDocument", "Read Full Document")}
-      </button>
-      <button
-        className="secondary-button"
-        disabled={isActionButtonDisabled("analyzeDefinedTerms")}
-        onClick={analyzeFullDocumentDefinedTerms}
-      >
-        {getButtonLabel("analyzeDefinedTerms", "Analyze Defined Terms")}
-      </button>
-      <button
-        className="secondary-button"
-        disabled={isActionButtonDisabled("analyzeCrossReferences")}
-        onClick={analyzeFullDocumentCrossReferences}
-      >
-        {getButtonLabel("analyzeCrossReferences", "Analyze Cross-References")}
-      </button>
-      <button
-        className="secondary-button"
-        disabled={isActionButtonDisabled("analyzeObligations")}
-        onClick={analyzeFullDocumentObligations}
-      >
-        {getButtonLabel("analyzeObligations", "Analyze Obligations")}
-      </button>
-      <button
-        className="secondary-button"
-        disabled={isActionButtonDisabled("explainSelectedClause")}
-        onClick={explainSelectedClause}
-      >
-        {getButtonLabel("explainSelectedClause", "Explain Selected Clause")}
-      </button>
+      <section className="mode-switch" aria-label="Contractr mode">
+        <button
+          className={`mode-button${activeMode === "selectR" ? " mode-button-active" : ""}`}
+          type="button"
+          aria-pressed={activeMode === "selectR"}
+          onClick={() => setActiveMode("selectR")}
+        >
+          selectR
+        </button>
+        <button
+          className={`mode-button${activeMode === "analyzR" ? " mode-button-active" : ""}`}
+          type="button"
+          aria-pressed={activeMode === "analyzR"}
+          onClick={() => setActiveMode("analyzR")}
+        >
+          analyzR
+        </button>
+      </section>
+
+      {activeMode === "selectR" ? (
+        <section className="tool-group" aria-labelledby="selectr-heading">
+          <h2 id="selectr-heading">selectR</h2>
+          <p className="mode-description">selectR tools act on the text currently selected in Word.</p>
+          <button className="primary-button" disabled={isActionButtonDisabled("readSelected")} onClick={readSelectedText}>
+            {getButtonLabel("readSelected", "Read Selected Text")}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={isActionButtonDisabled("explainSelectedClause")}
+            onClick={explainSelectedClause}
+          >
+            {getButtonLabel("explainSelectedClause", "Explain Selected Clause")}
+          </button>
+        </section>
+      ) : (
+        <section className="tool-group" aria-labelledby="analyzr-heading">
+          <h2 id="analyzr-heading">analyzR</h2>
+          <p className="mode-description">analyzR tools read the current Word document for deterministic analysis.</p>
+          <button className="primary-button" disabled={isActionButtonDisabled("readDocument")} onClick={readFullDocument}>
+            {getButtonLabel("readDocument", "Read Full Document")}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={isActionButtonDisabled("analyzeDefinedTerms")}
+            onClick={analyzeFullDocumentDefinedTerms}
+          >
+            {getButtonLabel("analyzeDefinedTerms", "Analyze Defined Terms")}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={isActionButtonDisabled("analyzeCrossReferences")}
+            onClick={analyzeFullDocumentCrossReferences}
+          >
+            {getButtonLabel("analyzeCrossReferences", "Analyze Cross-References")}
+          </button>
+          <button
+            className="secondary-button"
+            disabled={isActionButtonDisabled("analyzeObligations")}
+            onClick={analyzeFullDocumentObligations}
+          >
+            {getButtonLabel("analyzeObligations", "Analyze Obligations")}
+          </button>
+        </section>
+      )}
 
       <section className="output" aria-live="polite">
         <p className="status">{message}</p>
@@ -633,48 +674,45 @@ export function App() {
         characterCount !== null ? (
           <p className="count">{characterCount.toLocaleString()} characters</p>
         ) : null}
-        <section className="mock-explanation" aria-labelledby="mock-clause-explanation-heading">
-          <h2 id="mock-clause-explanation-heading">Mock Clause Explanation</h2>
-          <p className="mock-label">Mock output only — no real AI provider was called.</p>
-          {!clauseExplanation ? (
-            <p className="term-meta">Select a clause and click Explain Selected Clause to test the mock AI adapter.</p>
-          ) : (
-            <>
-              <p className="definition-label">Selected text preview</p>
-              <p className="definition-text">
-                {clauseExplanationSelectedText.length > selectedClausePreviewLimit
-                  ? `${clauseExplanationSelectedText.slice(0, selectedClausePreviewLimit).trimEnd()}...`
-                  : clauseExplanationSelectedText}
-              </p>
-              <p className="definition-label">Mock summary</p>
-              <p className="definition-text">{clauseExplanation.summary}</p>
-              <p className="definition-label">Mock explanation</p>
-              <p className="definition-text">{clauseExplanation.explanation}</p>
-              <div className="issue-group">
-                <h3>Mock review points</h3>
-                <ul>
-                  {clauseExplanation.reviewPoints.map((point) => (
-                    <li key={point}>{point}</li>
-                  ))}
-                </ul>
-              </div>
-              <div className="issue-group">
-                <h3>Mock safety notes</h3>
-                <ul>
-                  {clauseExplanation.notes.map((note) => (
-                    <li key={note}>{note}</li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          )}
-        </section>
-        {outputKind === "definedTerms" ||
-        outputKind === "crossReferences" ||
-        outputKind === "obligations" ||
-        hasAnalyzedDefinedTerms ||
-        hasAnalyzedCrossReferences ||
-        hasAnalyzedObligations ? (
+        {shouldShowMockExplanation ? (
+          <section className="mock-explanation" aria-labelledby="mock-clause-explanation-heading">
+            <h2 id="mock-clause-explanation-heading">Mock Clause Explanation</h2>
+            <p className="mock-label">Mock output only — no real AI provider was called.</p>
+            {!clauseExplanation ? (
+              <p className="term-meta">Select a clause and click Explain Selected Clause to test the mock AI adapter.</p>
+            ) : (
+              <>
+                <p className="definition-label">Selected text preview</p>
+                <p className="definition-text">
+                  {clauseExplanationSelectedText.length > selectedClausePreviewLimit
+                    ? `${clauseExplanationSelectedText.slice(0, selectedClausePreviewLimit).trimEnd()}...`
+                    : clauseExplanationSelectedText}
+                </p>
+                <p className="definition-label">Mock summary</p>
+                <p className="definition-text">{clauseExplanation.summary}</p>
+                <p className="definition-label">Mock explanation</p>
+                <p className="definition-text">{clauseExplanation.explanation}</p>
+                <div className="issue-group">
+                  <h3>Mock review points</h3>
+                  <ul>
+                    {clauseExplanation.reviewPoints.map((point) => (
+                      <li key={point}>{point}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="issue-group">
+                  <h3>Mock safety notes</h3>
+                  <ul>
+                    {clauseExplanation.notes.map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+          </section>
+        ) : null}
+        {shouldShowDocumentAnalysis ? (
           <>
             <section className="potential-issues" aria-labelledby="potential-obligations-heading">
               <h2 id="potential-obligations-heading">Potential Obligations</h2>
