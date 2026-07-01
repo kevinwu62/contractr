@@ -4,10 +4,13 @@ import {
   extractDefinedTerms,
   detectSelectionContext,
   extractPotentialObligations,
+  findCrossReferenceTarget,
   findDefinedButUnusedTerms,
   findPotentialBrokenReferences,
   findPotentialUndefinedTerms,
   findSimilarDefinedTerms,
+  type CrossReferenceTarget,
+  type CrossReferenceType,
   type DefinedTermResult,
   type FindPotentialUndefinedTermsResult,
   type PotentialObligation,
@@ -81,6 +84,18 @@ type SelectRMockEditCard = SelectRCardBase & {
   };
 };
 
+type SelectRSectionReferenceCard = SelectRCardBase & {
+  type: "sectionReference";
+  result: {
+    referenceText: string;
+    referenceType: CrossReferenceType;
+    headingText?: string;
+    extractedText?: string;
+    isApproximate: boolean;
+    message: string;
+  };
+};
+
 type SelectRPlaceholderCard = SelectRCardBase & {
   type: "placeholder";
   result: {
@@ -88,7 +103,12 @@ type SelectRPlaceholderCard = SelectRCardBase & {
   };
 };
 
-type SelectRCard = SelectRDefinedTermsCard | SelectRObligationsCard | SelectRMockEditCard | SelectRPlaceholderCard;
+type SelectRCard =
+  | SelectRDefinedTermsCard
+  | SelectRObligationsCard
+  | SelectRMockEditCard
+  | SelectRSectionReferenceCard
+  | SelectRPlaceholderCard;
 
 type NavigationTarget = {
   candidates: string[];
@@ -217,11 +237,31 @@ function getSelectionActionStatusLabel(action: SelectionAvailableAction) {
     return "Mock-only placeholder";
   }
 
-  if (action.status === "comingSoon") {
-    return "Coming in next step";
-  }
-
   return "Available";
+}
+
+function cloneSelectionContext(context: SelectionContext): SelectionContext {
+  return {
+    normalizedText: context.normalizedText,
+    references: context.references.map((reference) => ({ ...reference })),
+    confirmedDefinedTerms: context.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
+    definedTermCandidates: context.definedTermCandidates.map((candidate) => ({ ...candidate })),
+    obligationSignals: context.obligationSignals.map((signal) => ({ ...signal })),
+    isClauseLike: context.isClauseLike,
+    availableActions: context.availableActions.map((availableAction) => ({ ...availableAction })),
+  };
+}
+
+function getFirstSelectionReference(context: SelectionContext) {
+  return context.references[0] ?? null;
+}
+
+function getReferenceTypeLabel(type: CrossReferenceType) {
+  return type.charAt(0).toLocaleUpperCase() + type.slice(1);
+}
+
+function getReferenceNavigationMessage(target: CrossReferenceTarget) {
+  return `Selected the likely ${target.type} heading for ${target.referenceText}.`;
 }
 
 export function App() {
@@ -660,36 +700,37 @@ export function App() {
     }
   }
 
-  function createSelectRCard(action: SelectionAvailableAction) {
-    if (!currentSelectionText) {
-      setMessage("Select text in Word before opening a selectR action card.");
-      return;
-    }
-
+  function createBaseSelectRCard(
+    action: SelectionAvailableAction,
+    selectedTextSnapshot: string,
+    detectedElementsSnapshot: SelectionContext,
+  ): SelectRCardBase {
     selectRCardCounterRef.current += 1;
 
-    const baseCard: SelectRCardBase = {
+    return {
       id: `selectr-card-${Date.now()}-${selectRCardCounterRef.current}`,
       actionId: action.id,
       actionLabel: action.label,
       title: action.label,
-      selectedTextSnapshot: currentSelectionText,
-      analysisTextSnapshot: currentSelectionContext.normalizedText,
-      detectedElementsSnapshot: {
-        normalizedText: currentSelectionContext.normalizedText,
-        references: currentSelectionContext.references.map((reference) => ({ ...reference })),
-        confirmedDefinedTerms: currentSelectionContext.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
-        definedTermCandidates: currentSelectionContext.definedTermCandidates.map((candidate) => ({ ...candidate })),
-        obligationSignals: currentSelectionContext.obligationSignals.map((signal) => ({ ...signal })),
-        isClauseLike: currentSelectionContext.isClauseLike,
-        availableActions: currentSelectionContext.availableActions.map((availableAction) => ({ ...availableAction })),
-      },
+      selectedTextSnapshot,
+      analysisTextSnapshot: detectedElementsSnapshot.normalizedText,
+      detectedElementsSnapshot: cloneSelectionContext(detectedElementsSnapshot),
       createdAt: new Date().toLocaleTimeString([], {
         hour: "numeric",
         minute: "2-digit",
         second: "2-digit",
       }),
     };
+  }
+
+  function createSelectRCard(action: SelectionAvailableAction) {
+    if (!currentSelectionText) {
+      setMessage("Select text in Word before opening a selectR action card.");
+      return;
+    }
+
+    const selectionContextSnapshot = cloneSelectionContext(currentSelectionContext);
+    const baseCard = createBaseSelectRCard(action, currentSelectionText, selectionContextSnapshot);
 
     let card: SelectRCard;
 
@@ -698,8 +739,8 @@ export function App() {
         ...baseCard,
         type: "definedTerms",
         result: {
-          confirmedDefinedTerms: currentSelectionContext.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
-          definedTermCandidates: currentSelectionContext.definedTermCandidates.map((candidate) => ({ ...candidate })),
+          confirmedDefinedTerms: selectionContextSnapshot.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
+          definedTermCandidates: selectionContextSnapshot.definedTermCandidates.map((candidate) => ({ ...candidate })),
         },
       };
     } else if (action.id === "analyzeRelevantObligations") {
@@ -707,8 +748,8 @@ export function App() {
         ...baseCard,
         type: "obligations",
         result: {
-          potentialObligations: extractPotentialObligations(currentSelectionContext.normalizedText),
-          obligationSignals: currentSelectionContext.obligationSignals.map((signal) => ({ ...signal })),
+          potentialObligations: extractPotentialObligations(selectionContextSnapshot.normalizedText),
+          obligationSignals: selectionContextSnapshot.obligationSignals.map((signal) => ({ ...signal })),
         },
       };
     } else if (action.id === "editWithAi") {
@@ -744,6 +785,33 @@ export function App() {
     setSelectRCards((cards) => cards.filter((card) => card.id !== cardId));
   }
 
+  async function selectFirstDocumentText(candidates: string[]) {
+    let selectedCandidate = "";
+
+    await Word.run(async (context) => {
+      for (const candidate of candidates) {
+        const matches = context.document.body.search(candidate, {
+          ignorePunct: true,
+          ignoreSpace: true,
+          matchCase: false,
+          matchWholeWord: false,
+        });
+
+        matches.load("items");
+        await context.sync();
+
+        if (matches.items.length > 0) {
+          matches.items[0].select();
+          selectedCandidate = candidate;
+          await context.sync();
+          return;
+        }
+      }
+    });
+
+    return selectedCandidate;
+  }
+
   async function navigateToDocumentText(target: NavigationTarget) {
     if (!canStartAction()) {
       return;
@@ -752,34 +820,126 @@ export function App() {
     setActiveAction("navigate");
 
     try {
-      await Word.run(async (context) => {
-        for (const candidate of target.candidates) {
-          const matches = context.document.body.search(candidate, {
-            ignorePunct: true,
-            ignoreSpace: true,
-            matchCase: false,
-            matchWholeWord: false,
-          });
-
-          matches.load("items");
-          await context.sync();
-
-          if (matches.items.length > 0) {
-            matches.items[0].select();
-            await context.sync();
-            setMessage(target.successMessage);
-            return;
-          }
-        }
-
-        setMessage("Contractr could not find that text in the current Word document.");
-      });
+      const selectedCandidate = await selectFirstDocumentText(target.candidates);
+      setMessage(selectedCandidate ? target.successMessage : "Contractr could not find that text in the current Word document.");
     } catch (error) {
       console.error("Unable to navigate in the document.", error);
       setMessage("Contractr could not navigate to that text. Please try analyzing the document again.");
     } finally {
       clearActiveAction("navigate");
     }
+  }
+
+  async function navigateToSelectionReference() {
+    if (!canStartAction()) {
+      return;
+    }
+
+    const selectionContextSnapshot = cloneSelectionContext(currentSelectionContext);
+    const reference = getFirstSelectionReference(selectionContextSnapshot);
+
+    if (!currentSelectionText || !reference) {
+      setMessage("Select text containing a section, article, schedule, or exhibit reference before navigating.");
+      return;
+    }
+
+    setActiveAction("navigate");
+
+    try {
+      const documentText = await readDocumentText();
+      const targetResult = findCrossReferenceTarget(documentText, reference.referenceText, reference.type);
+
+      if (!targetResult.found) {
+        setMessage(`${reference.referenceText}: ${targetResult.reason}`);
+        return;
+      }
+
+      const selectedCandidate = await selectFirstDocumentText(targetResult.target.searchCandidates);
+      setMessage(
+        selectedCandidate
+          ? getReferenceNavigationMessage(targetResult.target)
+          : `${reference.referenceText}: Contractr found a likely heading in the extracted text, but Word search could not select it.`,
+      );
+    } catch (error) {
+      console.error("Unable to navigate to selected reference.", error);
+      setMessage("Contractr could not navigate to that reference. Please check that the document is open and try again.");
+    } finally {
+      clearActiveAction("navigate");
+    }
+  }
+
+  async function openSelectionReferenceInSidebar(action: SelectionAvailableAction) {
+    if (!canStartAction()) {
+      return;
+    }
+
+    const selectedTextSnapshot = currentSelectionText;
+    const selectionContextSnapshot = cloneSelectionContext(currentSelectionContext);
+    const reference = getFirstSelectionReference(selectionContextSnapshot);
+
+    if (!selectedTextSnapshot || !reference) {
+      setMessage("Select text containing a section, article, schedule, or exhibit reference before opening a section card.");
+      return;
+    }
+
+    setActiveAction("readDocument");
+
+    try {
+      const documentText = await readDocumentText();
+      const targetResult = findCrossReferenceTarget(documentText, reference.referenceText, reference.type);
+      const baseCard = createBaseSelectRCard(action, selectedTextSnapshot, selectionContextSnapshot);
+      const card: SelectRSectionReferenceCard = targetResult.found
+        ? {
+            ...baseCard,
+            title: `${targetResult.target.referenceText} Reference`,
+            type: "sectionReference",
+            result: {
+              referenceText: targetResult.target.referenceText,
+              referenceType: targetResult.target.type,
+              headingText: targetResult.target.headingText,
+              extractedText: targetResult.target.extractedText,
+              isApproximate: targetResult.target.isApproximate,
+              message: `Approximate ${getReferenceTypeLabel(targetResult.target.type).toLocaleLowerCase()} text extracted from the current document.`,
+            },
+          }
+        : {
+            ...baseCard,
+            title: `${reference.referenceText} Reference`,
+            type: "sectionReference",
+            result: {
+              referenceText: reference.referenceText,
+              referenceType: reference.type,
+              isApproximate: true,
+              message: targetResult.reason,
+            },
+          };
+
+      setSelectRCards((cards) => [card, ...cards]);
+      setMessage(
+        targetResult.found
+          ? `${targetResult.target.referenceText} card opened from the current document.`
+          : `${reference.referenceText}: ${targetResult.reason}`,
+      );
+    } catch (error) {
+      console.error("Unable to open selected reference in sidebar.", error);
+      setMessage("Contractr could not open that reference in the sidebar. Please check that the document is open and try again.");
+    } finally {
+      clearActiveAction("readDocument");
+    }
+  }
+
+  async function handleSelectRAction(action: SelectionAvailableAction) {
+    if (action.id === "goToSectionOrArticle") {
+      await navigateToSelectionReference();
+      return;
+    }
+
+    if (action.id === "openSectionOrArticleInSidebar") {
+      await openSelectionReferenceInSidebar(action);
+      return;
+    }
+
+    createSelectRCard(action);
   }
 
   const issueCount =
@@ -909,6 +1069,34 @@ export function App() {
               ))}
             </ul>
           </div>
+        </>
+      );
+    }
+
+    if (card.type === "sectionReference") {
+      return (
+        <>
+          <p className="term-meta">
+            Reference: <strong>{card.result.referenceText}</strong> ({card.result.referenceType})
+          </p>
+          {card.result.headingText ? (
+            <>
+              <p className="definition-label">Matched heading</p>
+              <p className="definition-text">{card.result.headingText}</p>
+            </>
+          ) : null}
+          <p className="mock-label">
+            {card.result.isApproximate
+              ? "Approximate extraction - confirm against the Word document before relying on it."
+              : "Extracted from the current Word document."}
+          </p>
+          <p className="term-meta">{card.result.message}</p>
+          {card.result.extractedText ? (
+            <>
+              <p className="definition-label">Referenced text</p>
+              <p className="definition-text">{card.result.extractedText}</p>
+            </>
+          ) : null}
         </>
       );
     }
@@ -1051,7 +1239,9 @@ export function App() {
                     disabled={officeState !== "ready" || activeAction !== null}
                     key={action.id}
                     title={action.reason}
-                    onClick={() => createSelectRCard(action)}
+                    onClick={() => {
+                      void handleSelectRAction(action);
+                    }}
                   >
                     <span>{action.label}</span>
                     <small>{getSelectionActionStatusLabel(action)}</small>

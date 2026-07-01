@@ -346,23 +346,21 @@ function isClauseLikeSelection(selectedText: string, obligationSignals: Selectio
 
 function getAvailableActions(context: Omit<SelectionContext, "availableActions">): SelectionAvailableAction[] {
   const actions: SelectionAvailableAction[] = [];
-  const hasSectionOrArticleReference = context.references.some(
-    (reference) => reference.type === "section" || reference.type === "article",
-  );
+  const hasDocumentReference = context.references.length > 0;
 
-  if (hasSectionOrArticleReference) {
+  if (hasDocumentReference) {
     actions.push(
       {
         id: "goToSectionOrArticle",
         label: "Go to Section/Article",
-        status: "comingSoon",
-        reason: "A section or article reference was detected.",
+        status: "available",
+        reason: "A section, article, schedule, or exhibit reference was detected.",
       },
       {
         id: "openSectionOrArticleInSidebar",
         label: "Open Section/Article in Sidebar",
-        status: "comingSoon",
-        reason: "A section or article reference was detected.",
+        status: "available",
+        reason: "A section, article, schedule, or exhibit reference was detected.",
       },
     );
   }

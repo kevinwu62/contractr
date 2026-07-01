@@ -8,6 +8,7 @@ export {
 export {
   detectCrossReferenceHeadings,
   detectCrossReferences,
+  findCrossReferenceTarget,
   findPotentialBrokenReferences,
 } from "./crossReferences";
 export { extractPotentialObligations } from "./obligations";
@@ -21,6 +22,8 @@ export type {
 export type {
   CrossReference,
   CrossReferenceHeading,
+  CrossReferenceTarget,
+  CrossReferenceTargetResult,
   CrossReferenceType,
   PotentialBrokenReference,
 } from "./crossReferences";

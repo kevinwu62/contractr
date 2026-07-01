@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 14 — Persistent selectR Action Cards
-**Last completed milestone:** Step 13 — Selection-Based Action Detection
-**Next task:** Retest persistent selectR action cards in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 15 — selectR Section Navigation Cards
+**Last completed milestone:** Step 14 — Persistent selectR Action Cards
+**Next task:** Retest section/article reference actions in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -393,7 +393,7 @@ Notes:
 
 ### Step 8 — Obligation Tracker
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -752,7 +752,7 @@ Notes:
 
 ### Step 14 — Persistent selectR Action Cards
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin.
 
 Goal:
 
@@ -774,7 +774,7 @@ Tasks:
 - [x] Keep analyzR `Analyze Defined Terms`, `Analyze Cross-References`, and `Analyze Obligations` working.
 - [x] Do not add real AI, backend, database, authentication, Next.js, API keys, or persistent selected-text storage.
 - [x] Run local validation and smoke checks.
-- [ ] Retest in Word with the fake Contractr test agreement.
+- [x] Retest in Word with the fake Contractr test agreement.
 - [ ] Commit working feature.
 
 Definition of done:
@@ -783,7 +783,7 @@ Definition of done:
 - [x] Cards can be closed one at a time.
 - [x] Existing cards do not change when the Word selection changes.
 - [x] Functional cards exist for defined terms, obligations, and mock-only edit.
-- [ ] Kevin confirms persistent action cards work in Word for Mac.
+- [x] Kevin confirms persistent action cards work in Word for Mac.
 
 Suggested commit message:
 
@@ -816,14 +816,14 @@ Notes:
   - bundled Step 14 smoke check with `esbuild` for selection actions, obligation extraction, and `MockProvider`
 - The package-local `npm run typecheck` in `packages/ai-adapters` currently fails because that package does not have its own installed `node_modules/.bin/tsc`; the same TypeScript project passes when run with the add-in's shared TypeScript binary.
 - Known limitation: cards are not persisted beyond the current task-pane session. Reloading the add-in clears them.
-- Known limitation: section/article action cards are placeholders only; they do not navigate or open section text yet.
+- Historical Step 14 limitation: section/article action cards were placeholders only during Step 14. Step 15 replaces those placeholders with navigation and sidebar-reference behavior.
 - Known limitation: `Edit with AI` is mock-only and does not call a real provider.
 
 ---
 
 ### Step 15 — selectR Section Navigation Cards
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
@@ -831,21 +831,23 @@ Turn the section/article selectR placeholders into useful navigation or sidebar 
 
 Tasks:
 
-- [ ] Decide whether `Go to Section/Article` should navigate immediately, create a card, or both.
-- [ ] Use existing Word search/navigation helpers where possible.
-- [ ] Make `Go to Section/Article` select the referenced section/article when Word can find it.
-- [ ] Make `Open Section/Article in Sidebar` create a persistent card with the referenced text when feasible.
-- [ ] Keep cards snapshot-based and closeable.
-- [ ] Preserve existing selectR cards and analyzR tools.
-- [ ] Do not add AI, backend, database, authentication, or Next.js.
+- [x] Decide whether `Go to Section/Article` should navigate immediately, create a card, or both.
+- [x] Use existing Word search/navigation helpers where possible.
+- [x] Make `Go to Section/Article` select the referenced section/article when Word can find it.
+- [x] Make `Open Section/Article in Sidebar` create a persistent card with the referenced text when feasible.
+- [x] Keep cards snapshot-based and closeable.
+- [x] Preserve existing selectR cards and analyzR tools.
+- [x] Do not add AI, backend, database, authentication, or Next.js.
+- [x] Run local validation and smoke checks.
 - [ ] Retest in Word with the fake Contractr test agreement.
 - [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] Section/article actions are no longer placeholder-only.
-- [ ] User can navigate to or open a referenced section/article from selectR.
-- [ ] Existing persistent cards still work.
+- [x] Section/article actions are no longer placeholder-only.
+- [x] User can navigate to or open a referenced section/article from selectR.
+- [x] Existing persistent cards still work at code/UI level.
+- [ ] Kevin confirms section/article actions work in Word for Mac.
 
 Suggested commit message:
 
@@ -853,7 +855,36 @@ Suggested commit message:
 
 Notes:
 
--
+- `Go to Section/Article` now runs immediately instead of creating a placeholder card.
+- `Open Section/Article in Sidebar` now creates a persistent `sectionReference` card from a snapshot of the current selection context.
+- Updated `packages/contract-core/src/crossReferences.ts` with reusable deterministic helpers for resolving a selected reference to a heading target:
+  - parses `Section`, `Article`, `Schedule`, and `Exhibit` references;
+  - normalizes references using the same key style as the cross-reference checker;
+  - finds the matching heading-like paragraph;
+  - returns Word search candidates that prefer the matched heading text;
+  - extracts an approximate snippet beginning at the matched heading and ending before the next detected heading or the snippet limit.
+- Updated `packages/contract-core/src/selectionContext.ts` so the reference actions are available for detected section, article, schedule, and exhibit references.
+- The Word task pane now uses the new target helper to navigate by selecting the best heading match through Office.js search/selection APIs.
+- Sidebar section cards show the selected reference, reference type, matched heading, approximate extraction label, and extracted text where feasible.
+- Missing or broken references fail gracefully with a clear not-found message or a persistent card explaining that no matching heading was detected.
+- Existing persistent cards remain unchanged:
+  - `Analyze Defined Terms`
+  - `Analyze Relevant Obligations`
+  - `Edit with AI` mock-only
+- Existing analyzR workflows remain unchanged:
+  - `Analyze Defined Terms`
+  - `Analyze Cross-References`
+  - `Analyze Obligations`
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, document edits, auto-inserted links, or selected/full-document logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - bundled Step 15 smoke check for selection reference detection, section/article/schedule target lookup, approximate extraction, missing-reference handling, and existing broken-reference checking
+- Known limitation: navigation and extraction are deterministic and heading-based. Unusual formatting, tables, headers/footers, or references whose headings do not appear as paragraph text may not resolve.
+- Known limitation: if a selection contains multiple references, the first detected reference is used for navigation/open-sidebar in this first version.
+- Known limitation: sidebar extraction is approximate and intentionally labelled that way. It stops at the next detected heading or a snippet limit; it does not yet model nested clause hierarchy.
+- Known limitation: the action labels still say `Section/Article` even though the underlying helper also supports schedules and exhibits.
 
 ---
 

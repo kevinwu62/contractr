@@ -13,6 +13,29 @@ export type CrossReferenceHeading = {
   normalizedTarget: string;
 };
 
+export type CrossReferenceTarget = {
+  referenceText: string;
+  type: CrossReferenceType;
+  normalizedTarget: string;
+  headingText: string;
+  extractedText: string;
+  isApproximate: boolean;
+  searchCandidates: string[];
+};
+
+export type CrossReferenceTargetResult =
+  | {
+      found: true;
+      target: CrossReferenceTarget;
+    }
+  | {
+      found: false;
+      referenceText: string;
+      type?: CrossReferenceType;
+      reason: string;
+      searchCandidates: string[];
+    };
+
 export type PotentialBrokenReference = {
   referenceText: string;
   type: CrossReferenceType;
@@ -33,6 +56,17 @@ function getParagraphs(documentText: string) {
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
+}
+
+function getParagraphRecords(documentText: string) {
+  return documentText
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => ({
+      text: paragraph,
+      firstLine: paragraph.split(/\n/)[0].trim(),
+    }));
 }
 
 function normalizeValue(value: string) {
@@ -84,17 +118,112 @@ function isLikelyHeadingLine(value: string) {
   return !/\b(shall|will|must|may|means|mean|is|are|was|were|has|have|pursuant|under)\b/i.test(normalizedValue);
 }
 
-function addHeading(
-  headings: CrossReferenceHeading[],
-  headingText: string,
-  type: CrossReferenceType,
-  value: string,
-) {
-  headings.push({
-    headingText,
-    type,
-    normalizedTarget: normalizeTarget(type, value),
-  });
+function getHeadingFromLine(firstLine: string): CrossReferenceHeading | null {
+  if (!isLikelyHeadingLine(firstLine)) {
+    return null;
+  }
+
+  const sectionHeading = firstLine.match(/^(?:Section\s+)?(\d+(?:\.\d+)*(?:\([a-z0-9ivxlcdm]+\))*)(?=\s|$)/i);
+  const articleHeading = firstLine.match(/^Article\s+([IVXLCDM]+|\d+(?:\.\d+)*)\b/i);
+  const scheduleHeading = firstLine.match(/^Schedule\s+([A-Z0-9]+(?:[-.][A-Z0-9]+)*)\b/i);
+  const exhibitHeading = firstLine.match(/^Exhibit\s+([A-Z0-9]+(?:[-.][A-Z0-9]+)*)\b/i);
+
+  if (sectionHeading) {
+    return {
+      headingText: firstLine,
+      type: "section",
+      normalizedTarget: normalizeTarget("section", sectionHeading[1]),
+    };
+  }
+
+  if (articleHeading) {
+    return {
+      headingText: firstLine,
+      type: "article",
+      normalizedTarget: normalizeTarget("article", articleHeading[1]),
+    };
+  }
+
+  if (scheduleHeading) {
+    return {
+      headingText: firstLine,
+      type: "schedule",
+      normalizedTarget: normalizeTarget("schedule", scheduleHeading[1]),
+    };
+  }
+
+  if (exhibitHeading) {
+    return {
+      headingText: firstLine,
+      type: "exhibit",
+      normalizedTarget: normalizeTarget("exhibit", exhibitHeading[1]),
+    };
+  }
+
+  return null;
+}
+
+function parseCrossReferenceText(referenceText: string, fallbackType?: CrossReferenceType): CrossReference | null {
+  const detectedReference = detectCrossReferences(referenceText)[0];
+
+  if (detectedReference) {
+    return detectedReference;
+  }
+
+  if (!fallbackType) {
+    return null;
+  }
+
+  const value = referenceText
+    .replace(new RegExp(`^${typeLabels[fallbackType]}\\s+`, "i"), "")
+    .trim();
+
+  if (!value) {
+    return null;
+  }
+
+  return {
+    referenceText: referenceText.trim(),
+    type: fallbackType,
+    normalizedTarget: normalizeTarget(fallbackType, value),
+    sourceText: referenceText.trim(),
+  };
+}
+
+function buildTargetSearchCandidates(reference: CrossReference, headingText: string) {
+  const headingWithoutSectionPrefix =
+    reference.type === "section" ? headingText.replace(/^Section\s+/i, "").trim() : headingText;
+
+  return Array.from(
+    new Set(
+      [headingText, headingWithoutSectionPrefix, reference.referenceText]
+        .map((candidate) => candidate.replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .filter((candidate) => candidate.length <= 240),
+    ),
+  );
+}
+
+function extractApproximateTargetText(paragraphs: ReturnType<typeof getParagraphRecords>, startIndex: number) {
+  const selectedParagraphs = [paragraphs[startIndex].text];
+
+  for (let index = startIndex + 1; index < paragraphs.length; index += 1) {
+    const nextHeading = getHeadingFromLine(paragraphs[index].firstLine);
+
+    if (nextHeading) {
+      break;
+    }
+
+    selectedParagraphs.push(paragraphs[index].text);
+
+    if (selectedParagraphs.join("\n\n").length >= 1800) {
+      break;
+    }
+  }
+
+  const extractedText = selectedParagraphs.join("\n\n").trim();
+
+  return extractedText.length > 2200 ? `${extractedText.slice(0, 2200).trimEnd()}\n\n[Snippet truncated]` : extractedText;
 }
 
 export function detectCrossReferences(documentText: string): CrossReference[] {
@@ -129,38 +258,69 @@ export function detectCrossReferences(documentText: string): CrossReference[] {
 
 export function detectCrossReferenceHeadings(documentText: string): CrossReferenceHeading[] {
   const headings: CrossReferenceHeading[] = [];
-  const paragraphs = getParagraphs(documentText);
+  const paragraphs = getParagraphRecords(documentText);
 
   for (const paragraph of paragraphs) {
-    const firstLine = paragraph.split(/\n/)[0].trim();
+    const heading = getHeadingFromLine(paragraph.firstLine);
 
-    if (!isLikelyHeadingLine(firstLine)) {
+    if (!heading) {
       continue;
     }
 
-    const sectionHeading = firstLine.match(/^(?:Section\s+)?(\d+(?:\.\d+)*(?:\([a-z0-9ivxlcdm]+\))*)(?=\s|$)/i);
-    const articleHeading = firstLine.match(/^Article\s+([IVXLCDM]+|\d+(?:\.\d+)*)\b/i);
-    const scheduleHeading = firstLine.match(/^Schedule\s+([A-Z0-9]+(?:[-.][A-Z0-9]+)*)\b/i);
-    const exhibitHeading = firstLine.match(/^Exhibit\s+([A-Z0-9]+(?:[-.][A-Z0-9]+)*)\b/i);
-
-    if (sectionHeading) {
-      addHeading(headings, firstLine, "section", sectionHeading[1]);
-    }
-
-    if (articleHeading) {
-      addHeading(headings, firstLine, "article", articleHeading[1]);
-    }
-
-    if (scheduleHeading) {
-      addHeading(headings, firstLine, "schedule", scheduleHeading[1]);
-    }
-
-    if (exhibitHeading) {
-      addHeading(headings, firstLine, "exhibit", exhibitHeading[1]);
-    }
+    headings.push(heading);
   }
 
   return headings;
+}
+
+export function findCrossReferenceTarget(
+  documentText: string,
+  referenceText: string,
+  fallbackType?: CrossReferenceType,
+): CrossReferenceTargetResult {
+  const reference = parseCrossReferenceText(referenceText, fallbackType);
+
+  if (!reference) {
+    return {
+      found: false,
+      referenceText,
+      type: fallbackType,
+      reason: "Contractr could not parse that reference.",
+      searchCandidates: [referenceText].filter(Boolean),
+    };
+  }
+
+  const paragraphs = getParagraphRecords(documentText);
+  const targetIndex = paragraphs.findIndex((paragraph) => {
+    const heading = getHeadingFromLine(paragraph.firstLine);
+    return heading?.normalizedTarget === reference.normalizedTarget;
+  });
+
+  if (targetIndex === -1) {
+    return {
+      found: false,
+      referenceText: reference.referenceText,
+      type: reference.type,
+      reason: `No matching ${typeLabels[reference.type].toLocaleLowerCase()} heading was detected in the document.`,
+      searchCandidates: [reference.referenceText],
+    };
+  }
+
+  const heading = getHeadingFromLine(paragraphs[targetIndex].firstLine);
+  const headingText = heading?.headingText ?? paragraphs[targetIndex].firstLine;
+
+  return {
+    found: true,
+    target: {
+      referenceText: reference.referenceText,
+      type: reference.type,
+      normalizedTarget: reference.normalizedTarget,
+      headingText,
+      extractedText: extractApproximateTargetText(paragraphs, targetIndex),
+      isApproximate: true,
+      searchCandidates: buildTargetSearchCandidates(reference, headingText),
+    },
+  };
 }
 
 export function findPotentialBrokenReferences(documentText: string): PotentialBrokenReference[] {
