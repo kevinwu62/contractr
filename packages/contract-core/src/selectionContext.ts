@@ -371,7 +371,7 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
     actions.push({
       id: "analyzeDefinedTerms",
       label: "Analyze Defined Terms",
-      status: "comingSoon",
+      status: "available",
       reason: "A likely defined term was detected in the selection.",
     });
   }
@@ -380,7 +380,7 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
     actions.push({
       id: "analyzeRelevantObligations",
       label: "Analyze Relevant Obligations",
-      status: "comingSoon",
+      status: "available",
       reason: "Obligation language was detected in the selection.",
     });
   }

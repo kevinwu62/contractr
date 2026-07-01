@@ -203,7 +203,7 @@ h1 {
 
 .action-chip:disabled {
   cursor: not-allowed;
-  opacity: 1;
+  opacity: 0.65;
 }
 
 .action-chip small {
@@ -211,6 +211,68 @@ h1 {
   color: #506070;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.selectr-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selectr-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #d9dee7;
+  padding-top: 12px;
+}
+
+.selectr-card:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.selectr-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.selectr-card-header h4 {
+  margin: 0 0 4px;
+  color: #102033;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.selectr-card-result-item {
+  border-top: 1px solid #e5e9ef;
+  padding-top: 10px;
+}
+
+.selectr-card-result-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.close-card-button {
+  flex: 0 0 auto;
+  border: 1px solid #b8c4d0;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #394957;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 6px 8px;
+}
+
+.close-card-button:hover {
+  background: #f2f5f8;
 }
 
 .secondary-button {

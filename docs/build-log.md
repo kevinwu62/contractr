@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 13 — Selection-Based Action Detection
-**Last completed milestone:** Step 12 — Live Selection Preview
-**Next task:** Retest selectR selected-text line/paragraph break preservation in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 14 — Persistent selectR Action Cards
+**Last completed milestone:** Step 13 — Selection-Based Action Detection
+**Next task:** Retest persistent selectR action cards in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -651,7 +651,7 @@ Notes:
 
 ### Step 13 — Selection-Based Action Detection
 
-**Status:** Implemented locally — Word for Mac manual retest still needed.
+**Status:** Done — tested successfully in Word for Mac by Kevin; follow-up fixes validated locally.
 
 Goal:
 
@@ -680,7 +680,7 @@ Tasks:
 - [x] Do not automatically run analysis or call `MockProvider` on selection changes.
 - [x] Do not add real AI, backend, database, authentication, Next.js, API keys, or persistent selected-text storage.
 - [x] Run local validation and contract-core smoke checks.
-- [ ] Retest in Word with the fake Contractr test agreement.
+- [x] Retest in Word with the fake Contractr test agreement.
 - [ ] Commit working feature.
 
 Definition of done:
@@ -689,7 +689,7 @@ Definition of done:
 - [x] `selectR` displays relevant available action placeholders.
 - [x] Detection logic is reusable from `contract-core`, not embedded in the UI.
 - [x] Selection changes do not automatically trigger analysis or AI.
-- [ ] Kevin confirms detection and action placeholders work in Word for Mac.
+- [x] Kevin confirms detection and action placeholders work in Word for Mac.
 
 Suggested commit message:
 
@@ -746,70 +746,110 @@ Notes:
 - Known limitation: confirmed selectR defined-term detection depends on running `Analyze Defined Terms` in `analyzR` first; otherwise Contractr only shows lower-confidence candidates.
 - Known limitation: candidate defined-term detection remains heuristic. It intentionally avoids confidently treating short standalone headings such as `General Provisions` as defined terms unless they are in the known defined-term list.
 - Known limitation: Word may expose selected paragraphs as whole paragraph text. Contractr avoids over-including unselected text, so unusual partial selections may still fall back to the flattened exact range text if safe paragraph reconstruction is not possible.
-- Known limitation: action chips are placeholders only; they do not navigate, open sections in the sidebar, or run selection-specific analyzers yet.
-- Known limitation: `Edit with AI` remains mock-only/coming-later and does not call any provider.
+- Known limitation: action chips were placeholders during Step 13; Step 14 begins turning the safe deterministic/mock actions into persistent cards.
 
 ---
 
-### Step 14 — First Real AI Provider
+### Step 14 — Persistent selectR Action Cards
 
-**Status:** Not started
+**Status:** Implemented locally — Word for Mac manual retest still needed.
 
 Goal:
 
-Connect one real provider for non-confidential testing only.
+When a user clicks an available `selectR` action, create a closeable result card from a snapshot of the current selection. The card stays visible until closed, even when the Word selection changes.
 
 Tasks:
 
-- [ ] Choose provider: Ollama or OpenAI.
-- [ ] Keep `MockProvider`.
-- [ ] Keep AI-disabled mode available.
-- [ ] Use environment variables for any credentials.
-- [ ] Confirm no secrets are committed.
-- [ ] Test only with dummy, public, or sanitized text.
-- [ ] Commit working provider.
+- [x] Add persistent `selectRCards` state in the Word task pane.
+- [x] Give each card a unique ID.
+- [x] Snapshot selected text, normalized analysis text, detected elements, action type, and creation time.
+- [x] Add close buttons for individual cards.
+- [x] Keep cards stable when the Word selection changes.
+- [x] Add an `Open Action Cards` section in `selectR`.
+- [x] Make `Analyze Defined Terms` create a defined-term card.
+- [x] Make `Analyze Relevant Obligations` create an obligation card.
+- [x] Make `Edit with AI` create a mock-only card that clearly says no real provider was called.
+- [x] Keep section/article actions as placeholder cards for now.
+- [x] Keep live selection preview, `Read Selected Text`, and `Explain Selected Clause` working.
+- [x] Keep analyzR `Analyze Defined Terms`, `Analyze Cross-References`, and `Analyze Obligations` working.
+- [x] Do not add real AI, backend, database, authentication, Next.js, API keys, or persistent selected-text storage.
+- [x] Run local validation and smoke checks.
+- [ ] Retest in Word with the fake Contractr test agreement.
+- [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] User can switch between mock and real test provider.
-- [ ] No secrets are hardcoded.
+- [x] `selectR` action chips create persistent cards.
+- [x] Cards can be closed one at a time.
+- [x] Existing cards do not change when the Word selection changes.
+- [x] Functional cards exist for defined terms, obligations, and mock-only edit.
+- [ ] Kevin confirms persistent action cards work in Word for Mac.
 
 Suggested commit message:
 
-`Add first real AI provider`
+`Add persistent selectR action cards`
 
 Notes:
 
--
+- Added a `SelectRCard` model in `apps/word-addin/src/App.tsx`.
+- Cards store only current React UI state, including a selected-text snapshot, normalized analysis-text snapshot, detected-elements snapshot, action ID, title, result, and creation time.
+- `Analyze Defined Terms` cards show confirmed known defined terms and potential defined-term candidates from the selection snapshot.
+- `Analyze Relevant Obligations` cards run the existing deterministic `extractPotentialObligations` function against the normalized selection snapshot and show potential obligations or obligation triggers.
+- `Edit with AI` cards are mock-only UI cards. They clearly state that no real AI provider was called and no selected text was sent outside the task pane.
+- `Go to Section/Article` and `Open Section/Article in Sidebar` currently create simple placeholder cards for a future navigation/sidebar step.
+- Updated `packages/contract-core/src/selectionContext.ts` so the deterministic defined-term and obligation actions are now marked `available`; section/article actions remain `comingSoon`, and `Edit with AI` remains `mockOnly`.
+- Existing manual selection workflows are unchanged:
+  - `Read Selected Text`
+  - `Explain Selected Clause`
+- Existing analyzR workflows are unchanged:
+  - `Read Full Document`
+  - `Analyze Defined Terms`
+  - `Analyze Cross-References`
+  - `Analyze Obligations`
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, full-document AI review, or selected-text logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout manifest.xml` in `apps/word-addin`
+  - `./apps/word-addin/node_modules/.bin/tsc --noEmit -p packages/ai-adapters/tsconfig.json`
+  - direct contract-core and ai-adapters TypeScript check through the add-in's shared TypeScript binary with Bundler resolution
+  - bundled Step 14 smoke check with `esbuild` for selection actions, obligation extraction, and `MockProvider`
+- The package-local `npm run typecheck` in `packages/ai-adapters` currently fails because that package does not have its own installed `node_modules/.bin/tsc`; the same TypeScript project passes when run with the add-in's shared TypeScript binary.
+- Known limitation: cards are not persisted beyond the current task-pane session. Reloading the add-in clears them.
+- Known limitation: section/article action cards are placeholders only; they do not navigate or open section text yet.
+- Known limitation: `Edit with AI` is mock-only and does not call a real provider.
 
 ---
 
-### Step 15 — Workplace-Safe Settings
+### Step 15 — selectR Section Navigation Cards
 
 **Status:** Not started
 
 Goal:
 
-Add visible settings for safe/default operation.
+Turn the section/article selectR placeholders into useful navigation or sidebar cards.
 
 Tasks:
 
-- [ ] Add settings panel.
-- [ ] Show current AI provider.
-- [ ] Support AI-disabled mode.
-- [ ] Support selected-text-only mode.
-- [ ] Keep full-document AI off by default.
-- [ ] Keep full-document logging off by default.
-- [ ] Commit working settings.
+- [ ] Decide whether `Go to Section/Article` should navigate immediately, create a card, or both.
+- [ ] Use existing Word search/navigation helpers where possible.
+- [ ] Make `Go to Section/Article` select the referenced section/article when Word can find it.
+- [ ] Make `Open Section/Article in Sidebar` create a persistent card with the referenced text when feasible.
+- [ ] Keep cards snapshot-based and closeable.
+- [ ] Preserve existing selectR cards and analyzR tools.
+- [ ] Do not add AI, backend, database, authentication, or Next.js.
+- [ ] Retest in Word with the fake Contractr test agreement.
+- [ ] Commit working feature.
 
 Definition of done:
 
-- [ ] App starts in safe/default mode.
-- [ ] User can clearly see whether AI is on or off.
+- [ ] Section/article actions are no longer placeholder-only.
+- [ ] User can navigate to or open a referenced section/article from selectR.
+- [ ] Existing persistent cards still work.
 
 Suggested commit message:
 
-`Add workplace-safe settings`
+`Add selectR section navigation cards`
 
 Notes:
 
@@ -933,16 +973,14 @@ Notes:
 
 Move only the current milestone’s tasks here when work starts.
 
-- [x] Step 13: Add reusable selection-context detection in `contract-core`.
-- [x] Step 13: Render `Detected Elements` in `selectR`.
-- [x] Step 13: Render `Available Actions` in `selectR`.
-- [x] Step 13: Improve selectR defined-term detection with known whole-document defined terms.
-- [x] Step 13: Preserve selected text line and paragraph breaks where feasible.
-- [x] Step 13: Keep action chips as placeholders only.
-- [x] Step 13: Keep existing `selectR` and `analyzR` actions working.
-- [x] Step 13: Run local validation and smoke checks.
-- [ ] Step 13: Retest in Word on Mac with the fake Contractr test agreement.
-- [ ] Step 13: Commit working selection-based action detection.
+- [x] Step 14: Add persistent `selectRCards` state.
+- [x] Step 14: Render `Open Action Cards` in `selectR`.
+- [x] Step 14: Create cards for defined terms, obligations, and mock-only edit.
+- [x] Step 14: Keep section/article action cards as placeholders.
+- [x] Step 14: Keep existing `selectR` and `analyzR` actions working.
+- [x] Step 14: Run local validation and smoke checks.
+- [ ] Step 14: Retest in Word on Mac with the fake Contractr test agreement.
+- [ ] Step 14: Commit working persistent action cards.
 
 ---
 

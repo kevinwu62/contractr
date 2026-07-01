@@ -12,7 +12,9 @@ import {
   type FindPotentialUndefinedTermsResult,
   type PotentialObligation,
   type PotentialBrokenReference,
+  type SelectionActionId,
   type SelectionAvailableAction,
+  type SelectionContext,
   type SimilarDefinedTermsResult,
 } from "@contractr/contract-core";
 import { readSelectedTextFromWordSelection } from "./wordSelection";
@@ -43,6 +45,50 @@ type PotentialIssues = {
 type CrossReferenceIssues = {
   potentialBrokenReferences: PotentialBrokenReference[];
 };
+
+type SelectRCardBase = {
+  id: string;
+  actionId: SelectionActionId;
+  actionLabel: string;
+  title: string;
+  selectedTextSnapshot: string;
+  analysisTextSnapshot: string;
+  detectedElementsSnapshot: SelectionContext;
+  createdAt: string;
+};
+
+type SelectRDefinedTermsCard = SelectRCardBase & {
+  type: "definedTerms";
+  result: {
+    confirmedDefinedTerms: SelectionContext["confirmedDefinedTerms"];
+    definedTermCandidates: SelectionContext["definedTermCandidates"];
+  };
+};
+
+type SelectRObligationsCard = SelectRCardBase & {
+  type: "obligations";
+  result: {
+    potentialObligations: PotentialObligation[];
+    obligationSignals: SelectionContext["obligationSignals"];
+  };
+};
+
+type SelectRMockEditCard = SelectRCardBase & {
+  type: "mockEdit";
+  result: {
+    summary: string;
+    notes: string[];
+  };
+};
+
+type SelectRPlaceholderCard = SelectRCardBase & {
+  type: "placeholder";
+  result: {
+    message: string;
+  };
+};
+
+type SelectRCard = SelectRDefinedTermsCard | SelectRObligationsCard | SelectRMockEditCard | SelectRPlaceholderCard;
 
 type NavigationTarget = {
   candidates: string[];
@@ -193,11 +239,13 @@ export function App() {
   const [clauseExplanationSelectedText, setClauseExplanationSelectedText] = useState("");
   const [currentSelectionText, setCurrentSelectionText] = useState("");
   const [currentSelectionError, setCurrentSelectionError] = useState("");
+  const [selectRCards, setSelectRCards] = useState<SelectRCard[]>([]);
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
   const [hasAnalyzedCrossReferences, setHasAnalyzedCrossReferences] = useState(false);
   const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
   const [message, setMessage] = useState("Select text in Word, then click the button.");
   const isSelectionRefreshRunningRef = useRef(false);
+  const selectRCardCounterRef = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -612,6 +660,90 @@ export function App() {
     }
   }
 
+  function createSelectRCard(action: SelectionAvailableAction) {
+    if (!currentSelectionText) {
+      setMessage("Select text in Word before opening a selectR action card.");
+      return;
+    }
+
+    selectRCardCounterRef.current += 1;
+
+    const baseCard: SelectRCardBase = {
+      id: `selectr-card-${Date.now()}-${selectRCardCounterRef.current}`,
+      actionId: action.id,
+      actionLabel: action.label,
+      title: action.label,
+      selectedTextSnapshot: currentSelectionText,
+      analysisTextSnapshot: currentSelectionContext.normalizedText,
+      detectedElementsSnapshot: {
+        normalizedText: currentSelectionContext.normalizedText,
+        references: currentSelectionContext.references.map((reference) => ({ ...reference })),
+        confirmedDefinedTerms: currentSelectionContext.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
+        definedTermCandidates: currentSelectionContext.definedTermCandidates.map((candidate) => ({ ...candidate })),
+        obligationSignals: currentSelectionContext.obligationSignals.map((signal) => ({ ...signal })),
+        isClauseLike: currentSelectionContext.isClauseLike,
+        availableActions: currentSelectionContext.availableActions.map((availableAction) => ({ ...availableAction })),
+      },
+      createdAt: new Date().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        second: "2-digit",
+      }),
+    };
+
+    let card: SelectRCard;
+
+    if (action.id === "analyzeDefinedTerms") {
+      card = {
+        ...baseCard,
+        type: "definedTerms",
+        result: {
+          confirmedDefinedTerms: currentSelectionContext.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
+          definedTermCandidates: currentSelectionContext.definedTermCandidates.map((candidate) => ({ ...candidate })),
+        },
+      };
+    } else if (action.id === "analyzeRelevantObligations") {
+      card = {
+        ...baseCard,
+        type: "obligations",
+        result: {
+          potentialObligations: extractPotentialObligations(currentSelectionContext.normalizedText),
+          obligationSignals: currentSelectionContext.obligationSignals.map((signal) => ({ ...signal })),
+        },
+      };
+    } else if (action.id === "editWithAi") {
+      card = {
+        ...baseCard,
+        title: "Edit with AI (mock only)",
+        type: "mockEdit",
+        result: {
+          summary:
+            "Mock-only editing card. No real AI provider was called, and no selected text was sent outside this task pane.",
+          notes: [
+            "A future provider could suggest tighter wording for only this selected text.",
+            "Contractr is still in AI-disabled/mock mode for this workflow.",
+            "Treat this card as a UI placeholder, not legal advice or real AI output.",
+          ],
+        },
+      };
+    } else {
+      card = {
+        ...baseCard,
+        type: "placeholder",
+        result: {
+          message: "This action is a placeholder for a future section-navigation step.",
+        },
+      };
+    }
+
+    setSelectRCards((cards) => [card, ...cards]);
+    setMessage(`${action.label} card opened from the current selectR selection.`);
+  }
+
+  function closeSelectRCard(cardId: string) {
+    setSelectRCards((cards) => cards.filter((card) => card.id !== cardId));
+  }
+
   async function navigateToDocumentText(target: NavigationTarget) {
     if (!canStartAction()) {
       return;
@@ -677,6 +809,112 @@ export function App() {
     hasAnalyzedDefinedTerms ||
     hasAnalyzedCrossReferences ||
     hasAnalyzedObligations;
+
+  function getCardSelectedTextPreview(card: SelectRCard) {
+    return card.selectedTextSnapshot.length > selectedClausePreviewLimit
+      ? `${card.selectedTextSnapshot.slice(0, selectedClausePreviewLimit).trimEnd()}...`
+      : card.selectedTextSnapshot;
+  }
+
+  function renderSelectRCardResult(card: SelectRCard) {
+    if (card.type === "definedTerms") {
+      const hasDefinedTermResults = card.result.confirmedDefinedTerms.length > 0 || card.result.definedTermCandidates.length > 0;
+
+      return hasDefinedTermResults ? (
+        <>
+          {card.result.confirmedDefinedTerms.length ? (
+            <div className="selection-detection-group">
+              <p className="definition-label">Defined terms found in selection</p>
+              <ul>
+                {card.result.confirmedDefinedTerms.map((definedTerm) => (
+                  <li key={`${card.id}-${definedTerm.term}-${definedTerm.matchedText}`}>
+                    <strong>{definedTerm.term}</strong>
+                    <span>
+                      Known defined term
+                      {definedTerm.matchedText !== definedTerm.term ? `, matched as ${definedTerm.matchedText}` : ""}
+                      {definedTerm.confidenceLabel ? ` (${definedTerm.confidenceLabel})` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {card.result.definedTermCandidates.length ? (
+            <div className="selection-detection-group">
+              <p className="definition-label">Potential defined-term candidates</p>
+              <ul>
+                {card.result.definedTermCandidates.map((candidate) => (
+                  <li key={`${card.id}-${candidate.source}-${candidate.term}`}>
+                    <strong>{candidate.term}</strong>
+                    <span>{candidate.source}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <p className="term-meta">No defined terms or candidates were found in this selection snapshot.</p>
+      );
+    }
+
+    if (card.type === "obligations") {
+      return card.result.potentialObligations.length ? (
+        <ol className="defined-term-list">
+          {card.result.potentialObligations.map((obligation, index) => (
+            <li className="selectr-card-result-item" key={`${card.id}-${obligation.obligationText}-${index}`}>
+              <p className="term-meta">
+                Party: <strong>{obligation.responsibleParty ?? "Possible responsible party not detected"}</strong>
+              </p>
+              <p className="term-meta">
+                Trigger: <strong>{obligation.triggerText}</strong>
+              </p>
+              {obligation.deadlineOrTiming ? (
+                <p className="term-meta">
+                  Timing: <strong>{obligation.deadlineOrTiming}</strong>
+                </p>
+              ) : null}
+              <p className="definition-label">Potential obligation text</p>
+              <p className="definition-text">{obligation.obligationText}</p>
+            </li>
+          ))}
+        </ol>
+      ) : card.result.obligationSignals.length ? (
+        <div className="selection-detection-group">
+          <p className="definition-label">Obligation triggers found</p>
+          <ul>
+            {card.result.obligationSignals.map((signal) => (
+              <li key={`${card.id}-${signal.triggerText}`}>
+                <strong>{signal.triggerText}</strong>
+                <span>Potential obligation language detected in this selection snapshot.</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="term-meta">No potential obligations were found in this selection snapshot.</p>
+      );
+    }
+
+    if (card.type === "mockEdit") {
+      return (
+        <>
+          <p className="mock-label">Mock output only - no real AI provider was called.</p>
+          <p className="definition-text">{card.result.summary}</p>
+          <div className="issue-group">
+            <h3>Mock notes</h3>
+            <ul>
+              {card.result.notes.map((note) => (
+                <li key={`${card.id}-${note}`}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        </>
+      );
+    }
+
+    return <p className="term-meta">{card.result.message}</p>;
+  }
 
   return (
     <main className="app-shell">
@@ -807,7 +1045,14 @@ export function App() {
             ) : currentSelectionContext.availableActions.length ? (
               <div className="action-chip-list">
                 {currentSelectionContext.availableActions.map((action) => (
-                  <button className="action-chip" type="button" disabled key={action.id} title={action.reason}>
+                  <button
+                    className="action-chip"
+                    type="button"
+                    disabled={officeState !== "ready" || activeAction !== null}
+                    key={action.id}
+                    title={action.reason}
+                    onClick={() => createSelectRCard(action)}
+                  >
                     <span>{action.label}</span>
                     <small>{getSelectionActionStatusLabel(action)}</small>
                   </button>
@@ -815,6 +1060,34 @@ export function App() {
               </div>
             ) : (
               <p className="term-meta">No context-aware actions are available for this selection yet.</p>
+            )}
+          </section>
+          <section className="selection-context" aria-labelledby="open-action-cards-heading">
+            <h3 id="open-action-cards-heading">Open Action Cards</h3>
+            {selectRCards.length ? (
+              <ol className="selectr-card-list">
+                {selectRCards.map((card) => (
+                  <li className="selectr-card" key={card.id}>
+                    <div className="selectr-card-header">
+                      <div>
+                        <h4>{card.title}</h4>
+                        <p className="term-meta">
+                          {card.actionLabel} - Created {card.createdAt}
+                        </p>
+                      </div>
+                      <button className="close-card-button" type="button" onClick={() => closeSelectRCard(card.id)}>
+                        Close
+                      </button>
+                    </div>
+                    <p className="definition-label">Selected text snapshot</p>
+                    <p className="definition-text">{getCardSelectedTextPreview(card)}</p>
+                    <p className="definition-label">Result</p>
+                    {renderSelectRCardResult(card)}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="term-meta">No action cards open yet. Select text and choose an action to create one.</p>
             )}
           </section>
           <button className="primary-button" disabled={isActionButtonDisabled("readSelected")} onClick={readSelectedText}>
@@ -871,7 +1144,7 @@ export function App() {
         {shouldShowMockExplanation ? (
           <section className="mock-explanation" aria-labelledby="mock-clause-explanation-heading">
             <h2 id="mock-clause-explanation-heading">Mock Clause Explanation</h2>
-            <p className="mock-label">Mock output only — no real AI provider was called.</p>
+            <p className="mock-label">Mock output only - no real AI provider was called.</p>
             {!clauseExplanation ? (
               <p className="term-meta">Select a clause and click Explain Selected Clause to test the mock AI adapter.</p>
             ) : (
