@@ -249,6 +249,16 @@ h1 {
   line-height: 1.25;
 }
 
+.selectr-card-title-group {
+  min-width: 0;
+}
+
+.selectr-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .selectr-card-result-item {
   border-top: 1px solid #e5e9ef;
   padding-top: 10px;
@@ -259,8 +269,8 @@ h1 {
   padding-top: 0;
 }
 
+.pin-card-button,
 .close-card-button {
-  flex: 0 0 auto;
   border: 1px solid #b8c4d0;
   border-radius: 6px;
   background: #ffffff;
@@ -271,8 +281,19 @@ h1 {
   padding: 6px 8px;
 }
 
+.pin-card-button-active {
+  border-color: #155e75;
+  background: #155e75;
+  color: #ffffff;
+}
+
+.pin-card-button:hover,
 .close-card-button:hover {
   background: #f2f5f8;
+}
+
+.pin-card-button-active:hover {
+  background: #164e63;
 }
 
 .secondary-button {
@@ -349,6 +370,12 @@ pre {
   padding-bottom: 16px;
 }
 
+.contract-analysis-results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .mock-explanation {
   display: flex;
   flex-direction: column;
@@ -357,6 +384,7 @@ pre {
   padding-bottom: 16px;
 }
 
+.contract-analysis-results > h2,
 .potential-issues h2,
 .mock-explanation h2,
 .issue-group h3 {
@@ -365,6 +393,7 @@ pre {
   line-height: 1.25;
 }
 
+.contract-analysis-results > h2,
 .potential-issues h2,
 .mock-explanation h2 {
   font-size: 1.12rem;
@@ -426,7 +455,9 @@ pre {
 
 .link-button:focus-visible,
 .small-action-button:focus-visible,
-.mode-button:focus-visible {
+.mode-button:focus-visible,
+.pin-card-button:focus-visible,
+.close-card-button:focus-visible {
   outline: 2px solid #155e75;
   outline-offset: 3px;
 }

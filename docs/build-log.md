@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 15 — selectR Section Navigation Cards
-**Last completed milestone:** Step 14 — Persistent selectR Action Cards
-**Next task:** Retest section/article reference actions in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 15B — selectR Card Behavior and Layout Cleanup
+**Last completed milestone:** Step 15A — selectR/analyzR UI Cleanup
+**Next task:** Retest the updated selectR card behavior and analyzR scoping in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -888,6 +888,134 @@ Notes:
 
 ---
 
+### Step 15A — selectR/analyzR UI Cleanup
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Simplify the selectR and analyzR workflows while preserving the existing deterministic analysis and mock-only AI behavior.
+
+Tasks:
+
+- [x] Remove the visible `Current Selection` preview box from `selectR` while keeping internal live selection tracking.
+- [x] Move `Available Actions` to the top of `selectR`, directly under the `selectR` heading.
+- [x] Remove standalone `Read Selected Text` and `Explain Selected Clause` buttons from `selectR`.
+- [x] Add `Explain Selected Clause` to the `Available Actions` flow for clause-like selections.
+- [x] Make `Explain Selected Clause` create a persistent closeable mock-only selectR card.
+- [x] Replace separate analyzR buttons with one `Analyze Contract` button.
+- [x] Run full-document reading, defined-term analysis, defined-term issue checks, cross-reference checks, and obligation checks from `Analyze Contract`.
+- [x] Group analyzR output under `Contract Analysis Results`.
+- [x] Simplify selectR `Analyze Defined Terms` cards so they show only selection-relevant terms and definitions or a clear no-definition-found message.
+- [x] Run local validation and smoke checks.
+- [ ] Retest in Word for Mac with the fake Contractr test agreement.
+- [ ] Commit working UI cleanup.
+
+Definition of done:
+
+- [x] selectR no longer shows the Current Selection preview box.
+- [x] Available Actions is the first selectR content section.
+- [x] selectR standalone buttons are removed from the rendered UI.
+- [x] Clause explanation remains mock-only and persistent until the user closes its card.
+- [x] analyzR exposes one user-facing `Analyze Contract` action.
+- [x] Existing deterministic and mock-provider logic remains local.
+- [ ] Kevin confirms the cleaned flows work in Word for Mac.
+
+Suggested commit message:
+
+`Refine selectR and analyzR workflows`
+
+Notes:
+
+- `packages/contract-core/src/selectionContext.ts` now includes `Explain Selected Clause` as a mock-only available action when the current selection is clause-like.
+- `apps/word-addin/src/App.tsx` keeps live selection state for detection, but removes the visible Current Selection text/character-count preview from selectR.
+- `Available Actions` now appears directly below the selectR title/description and before detected elements or action cards.
+- Removed the rendered standalone selectR buttons:
+  - `Read Selected Text`
+  - `Explain Selected Clause`
+- `Explain Selected Clause` now reads the current Word selection at click time, calls only `MockProvider.explainClause`, and creates a persistent closeable selectR card labelled as mock-only with no real AI provider called.
+- analyzR now renders one `Analyze Contract` button. It reads the full document once, then refreshes:
+  - defined terms;
+  - defined-term potential issues;
+  - potential broken cross-references;
+  - potential obligations.
+- analyzR results are grouped under `Contract Analysis Results` with a deterministic-local/no-real-AI label.
+- selectR defined-term cards no longer show broad whole-document issue output, cross-reference output, obligation output, usage-count details, or unrelated potential issues. They now show only selected confirmed terms with definitions, plus selected candidate terms with a no-definition-found note.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, real AI provider, document edits, selected-text logging, or full-document logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout apps/word-addin/manifest.xml`
+  - bundled smoke check for defined-term extraction, cross-reference checking, obligation extraction, `Explain Selected Clause` action detection, and `MockProvider.explainClause`
+- Validation note: `npm run typecheck` from `packages/ai-adapters` did not run directly because that package does not have its own installed `tsc` binary. The adapter source was typechecked through the Word add-in TypeScript project and covered by the bundled smoke check.
+- Known limitation: manual Word retesting is still needed for the cleaned flows.
+- Known limitation: selectR confirmed defined-term cards can show definitions only after analyzR `Analyze Contract` has populated whole-document defined-term results. Otherwise candidate terms are shown with the no-definition-found message.
+- Known limitation: clause suitability still uses the existing deterministic clause-like heuristic; unusual short clauses may not surface `Explain Selected Clause`.
+
+---
+
+### Step 15B — selectR Card Behavior and Layout Cleanup
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Clean up selectR card behavior and display scope while preserving deterministic analysis and mock-only AI behavior.
+
+Tasks:
+
+- [x] Move `Detected Elements` to the bottom of selectR.
+- [x] Rename the box to `Detected Elements — for bug fixing only`.
+- [x] Change selectR cards to temporary-by-default behavior.
+- [x] Keep temporary cards open during selection changes.
+- [x] Replace old unpinned cards only when a new action is run after a changed selection.
+- [x] Add `Pin` behavior to selectR cards.
+- [x] Keep pinned cards until `Close` is clicked.
+- [x] Scope `Analyze Contract` results to the analyzR tab only.
+- [x] Simplify selectR action card content by removing selected-text snapshots, creation times, repeated labels, and debug filler.
+- [x] Keep mock-only warning text on mock provider cards.
+- [x] Run local validation and smoke checks.
+- [ ] Retest in Word for Mac with the fake Contractr test agreement.
+- [ ] Commit working card/layout cleanup.
+
+Definition of done:
+
+- [x] selectR shows only Available Actions, selectR action cards, and `Detected Elements — for bug fixing only`.
+- [x] analyzR results are not visible while selectR is active.
+- [x] analyzR results remain in state and reappear when switching back to analyzR.
+- [x] Unpinned cards from old selections are removed only when an action is run for a newer selection.
+- [x] Pinned cards survive newer actions and close only through `Close`.
+- [ ] Kevin confirms the behavior in Word for Mac.
+
+Suggested commit message:
+
+`Refine selectR card behavior and layout`
+
+Notes:
+
+- `apps/word-addin/src/App.tsx` now tracks a simple `selectionVersion` that increments only when the selected text changes.
+- New selectR cards store `selectionVersion` and `isPinned`.
+- `addSelectRCard` keeps pinned cards and same-selection cards, but removes unpinned cards from older selections when a new card is created for a newer selection.
+- Selection changes alone do not close cards.
+- Clicking an action again without a changed selection does not clear prior cards from that same selection.
+- Each card now has `Pin` and `Close` controls. `Pin` toggles `isPinned`; `Close` removes the card whether pinned or unpinned.
+- `Detected Elements — for bug fixing only` now renders after Available Actions and Open Action Cards.
+- The shared output area now renders only while `activeMode === "analyzR"`, so full contract analysis results do not appear in selectR.
+- Card content was simplified: selected-text snapshots, created-at timestamps, repeated action labels, and generic debug filler were removed from selectR card rendering.
+- Mock cards still show `Mock output only - no real AI provider was called.`
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, real AI provider, document edits, selected-text logging, or full-document logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout apps/word-addin/manifest.xml`
+  - bundled Step 15B smoke check for selection action detection, defined-term extraction, obligation extraction, broken-reference checking, and `MockProvider.explainClause`
+- Validation note: `npm run typecheck` from `packages/ai-adapters` still does not run directly because that package does not have its own installed `tsc` binary. The adapter source was typechecked through the Word add-in TypeScript project and covered by the bundled smoke check.
+- Known limitation: manual Word retesting is still needed for card cleanup, pin behavior, and analyzR scoping.
+- Known limitation: selectR confirmed defined-term cards can show definitions only after analyzR `Analyze Contract` has populated whole-document defined-term results.
+- Known limitation: clause suitability still uses the existing deterministic clause-like heuristic; unusual short clauses may not surface `Explain Selected Clause`.
+
+---
+
 ### Step 16 — Demo Materials
 
 **Status:** Not started
@@ -1004,14 +1132,14 @@ Notes:
 
 Move only the current milestone’s tasks here when work starts.
 
-- [x] Step 14: Add persistent `selectRCards` state.
-- [x] Step 14: Render `Open Action Cards` in `selectR`.
-- [x] Step 14: Create cards for defined terms, obligations, and mock-only edit.
-- [x] Step 14: Keep section/article action cards as placeholders.
-- [x] Step 14: Keep existing `selectR` and `analyzR` actions working.
-- [x] Step 14: Run local validation and smoke checks.
-- [ ] Step 14: Retest in Word on Mac with the fake Contractr test agreement.
-- [ ] Step 14: Commit working persistent action cards.
+- [x] Step 15B: Move and rename `Detected Elements — for bug fixing only`.
+- [x] Step 15B: Add temporary-by-default selectR card cleanup.
+- [x] Step 15B: Add selectR card Pin behavior.
+- [x] Step 15B: Scope analyzR results to analyzR only.
+- [x] Step 15B: Simplify selectR card content.
+- [x] Step 15B: Run local validation and smoke checks.
+- [ ] Step 15B: Retest in Word on Mac with the fake Contractr test agreement.
+- [ ] Step 15B: Commit working card/layout cleanup.
 
 ---
 

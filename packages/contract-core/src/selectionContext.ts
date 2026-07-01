@@ -35,6 +35,7 @@ export type SelectionActionId =
   | "openSectionOrArticleInSidebar"
   | "analyzeDefinedTerms"
   | "analyzeRelevantObligations"
+  | "explainSelectedClause"
   | "editWithAi";
 
 export type SelectionAvailableAction = {
@@ -384,6 +385,13 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
   }
 
   if (context.isClauseLike) {
+    actions.push({
+      id: "explainSelectedClause",
+      label: "Explain Selected Clause",
+      status: "mockOnly",
+      reason: "The selection looks clause-like. This uses only the local mock provider.",
+    });
+
     actions.push({
       id: "editWithAi",
       label: "Edit with AI",

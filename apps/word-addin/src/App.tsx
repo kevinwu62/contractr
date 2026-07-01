@@ -24,10 +24,11 @@ import { readSelectedTextFromWordSelection } from "./wordSelection";
 
 type OfficeState = "loading" | "ready" | "unavailable";
 type ActiveMode = "selectR" | "analyzR";
-type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations" | "clauseExplanation";
+type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations" | "contractAnalysis";
 type ActiveAction =
   | "readSelected"
   | "readDocument"
+  | "analyzeContract"
   | "analyzeDefinedTerms"
   | "analyzeCrossReferences"
   | "analyzeObligations"
@@ -35,7 +36,6 @@ type ActiveAction =
   | "navigate";
 
 const fullDocumentPreviewLimit = 2500;
-const selectedClausePreviewLimit = 1200;
 const liveSelectionPollIntervalMs = 2000;
 const aiProvider = new MockProvider();
 
@@ -57,13 +57,14 @@ type SelectRCardBase = {
   selectedTextSnapshot: string;
   analysisTextSnapshot: string;
   detectedElementsSnapshot: SelectionContext;
-  createdAt: string;
+  selectionVersion: number;
+  isPinned: boolean;
 };
 
 type SelectRDefinedTermsCard = SelectRCardBase & {
   type: "definedTerms";
   result: {
-    confirmedDefinedTerms: SelectionContext["confirmedDefinedTerms"];
+    confirmedDefinedTerms: Array<SelectionContext["confirmedDefinedTerms"][number] & { definitionText: string }>;
     definedTermCandidates: SelectionContext["definedTermCandidates"];
   };
 };
@@ -82,6 +83,11 @@ type SelectRMockEditCard = SelectRCardBase & {
     summary: string;
     notes: string[];
   };
+};
+
+type SelectRMockExplanationCard = SelectRCardBase & {
+  type: "mockExplanation";
+  result: ClauseAnalysisResult;
 };
 
 type SelectRSectionReferenceCard = SelectRCardBase & {
@@ -107,6 +113,7 @@ type SelectRCard =
   | SelectRDefinedTermsCard
   | SelectRObligationsCard
   | SelectRMockEditCard
+  | SelectRMockExplanationCard
   | SelectRSectionReferenceCard
   | SelectRPlaceholderCard;
 
@@ -234,7 +241,7 @@ function getTermNavigationTarget(term: string): NavigationTarget {
 
 function getSelectionActionStatusLabel(action: SelectionAvailableAction) {
   if (action.status === "mockOnly") {
-    return "Mock-only placeholder";
+    return "Mock only";
   }
 
   return "Available";
@@ -275,9 +282,8 @@ export function App() {
   const [potentialIssues, setPotentialIssues] = useState<PotentialIssues>(emptyPotentialIssues);
   const [crossReferenceIssues, setCrossReferenceIssues] = useState<CrossReferenceIssues>(emptyCrossReferenceIssues);
   const [potentialObligations, setPotentialObligations] = useState<PotentialObligation[]>([]);
-  const [clauseExplanation, setClauseExplanation] = useState<ClauseAnalysisResult | null>(null);
-  const [clauseExplanationSelectedText, setClauseExplanationSelectedText] = useState("");
   const [currentSelectionText, setCurrentSelectionText] = useState("");
+  const [selectionVersion, setSelectionVersion] = useState(0);
   const [currentSelectionError, setCurrentSelectionError] = useState("");
   const [selectRCards, setSelectRCards] = useState<SelectRCard[]>([]);
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
@@ -373,7 +379,7 @@ export function App() {
     try {
       const text = await readSelectedTextFromWord();
 
-      setCurrentSelectionText((previousText) => (previousText === text ? previousText : text));
+      updateCurrentSelectionText(text);
       setCurrentSelectionError("");
     } catch (error) {
       console.error("Unable to refresh current selection preview.", error);
@@ -430,8 +436,6 @@ export function App() {
     setPotentialIssues(emptyPotentialIssues);
     setCrossReferenceIssues(emptyCrossReferenceIssues);
     setPotentialObligations([]);
-    setClauseExplanation(null);
-    setClauseExplanationSelectedText("");
     setHasAnalyzedDefinedTerms(false);
     setHasAnalyzedCrossReferences(false);
     setHasAnalyzedObligations(false);
@@ -447,6 +451,17 @@ export function App() {
 
   function getButtonLabel(action: ActiveAction, idleLabel: string) {
     return activeAction === action ? "Working..." : idleLabel;
+  }
+
+  function updateCurrentSelectionText(nextText: string) {
+    setCurrentSelectionText((previousText) => {
+      if (previousText === nextText) {
+        return previousText;
+      }
+
+      setSelectionVersion((previousVersion) => previousVersion + 1);
+      return nextText;
+    });
   }
 
   function getReadyMessage() {
@@ -481,7 +496,7 @@ export function App() {
     try {
       const text = await readSelectedTextFromWord();
 
-      setCurrentSelectionText(text);
+      updateCurrentSelectionText(text);
       setOutputKind("selected");
       setOutputText(text);
       setCharacterCount(null);
@@ -491,14 +506,12 @@ export function App() {
       console.error("Unable to read selected text.", error);
       setOutputKind("selected");
       setOutputText("");
-      setCurrentSelectionText("");
+      updateCurrentSelectionText("");
       setCharacterCount(null);
       setDefinedTerms([]);
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
       setPotentialObligations([]);
-      setClauseExplanation(null);
-      setClauseExplanationSelectedText("");
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
       setHasAnalyzedObligations(false);
@@ -536,8 +549,6 @@ export function App() {
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
       setPotentialObligations([]);
-      setClauseExplanation(null);
-      setClauseExplanationSelectedText("");
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
       setHasAnalyzedObligations(false);
@@ -660,43 +671,58 @@ export function App() {
     }
   }
 
-  async function explainSelectedClause() {
+  async function analyzeContract() {
     if (!canStartAction()) {
       return;
     }
 
-    setActiveAction("explainSelectedClause");
+    setActiveAction("analyzeContract");
 
     try {
-      const text = await readSelectedTextFromWord();
+      const text = await readDocumentText();
+      const definedTermResults = extractDefinedTerms(text);
+      const issues: PotentialIssues = {
+        definedButUnusedTerms: findDefinedButUnusedTerms(text, definedTermResults),
+        potentialUndefinedTerms: findPotentialUndefinedTerms(text, definedTermResults),
+        similarDefinedTerms: findSimilarDefinedTerms(definedTermResults),
+      };
+      const referenceIssues: CrossReferenceIssues = {
+        potentialBrokenReferences: findPotentialBrokenReferences(text),
+      };
+      const obligationResults = extractPotentialObligations(text);
 
-      setCurrentSelectionText(text);
-      setOutputKind("clauseExplanation");
+      setOutputKind("contractAnalysis");
       setOutputText("");
-      setCharacterCount(null);
-
-      if (!text) {
-        setClauseExplanation(null);
-        setClauseExplanationSelectedText("");
-        setMessage("No clause text is selected. Select a clause in Word and try again.");
-        return;
-      }
-
-      const result = await aiProvider.explainClause({ selectedText: text });
-
-      setClauseExplanation(result);
-      setClauseExplanationSelectedText(text);
-      setMessage("Mock clause explanation:");
+      setCharacterCount(text.length);
+      setDefinedTerms(definedTermResults);
+      setPotentialIssues(issues);
+      setCrossReferenceIssues(referenceIssues);
+      setPotentialObligations(obligationResults);
+      setHasAnalyzedDefinedTerms(true);
+      setHasAnalyzedCrossReferences(true);
+      setHasAnalyzedObligations(true);
+      setMessage(
+        `Contract analysis complete: ${definedTermResults.length.toLocaleString()} defined term${
+          definedTermResults.length === 1 ? "" : "s"
+        }, ${referenceIssues.potentialBrokenReferences.length.toLocaleString()} potential broken reference${
+          referenceIssues.potentialBrokenReferences.length === 1 ? "" : "s"
+        }, ${obligationResults.length.toLocaleString()} potential obligation${obligationResults.length === 1 ? "" : "s"}.`,
+      );
     } catch (error) {
-      console.error("Unable to explain selected clause with the mock provider.", error);
-      setOutputKind("clauseExplanation");
+      console.error("Unable to analyze contract.", error);
+      setOutputKind("contractAnalysis");
       setOutputText("");
       setCharacterCount(null);
-      setClauseExplanation(null);
-      setClauseExplanationSelectedText("");
-      setMessage("Contractr could not explain the selected clause with the mock provider. Please try again.");
+      setDefinedTerms([]);
+      setPotentialIssues(emptyPotentialIssues);
+      setCrossReferenceIssues(emptyCrossReferenceIssues);
+      setPotentialObligations([]);
+      setHasAnalyzedDefinedTerms(false);
+      setHasAnalyzedCrossReferences(false);
+      setHasAnalyzedObligations(false);
+      setMessage("Contractr could not analyze the contract. Please check that a Word document is open and try again.");
     } finally {
-      clearActiveAction("explainSelectedClause");
+      clearActiveAction("analyzeContract");
     }
   }
 
@@ -704,6 +730,7 @@ export function App() {
     action: SelectionAvailableAction,
     selectedTextSnapshot: string,
     detectedElementsSnapshot: SelectionContext,
+    cardSelectionVersion = selectionVersion,
   ): SelectRCardBase {
     selectRCardCounterRef.current += 1;
 
@@ -715,12 +742,27 @@ export function App() {
       selectedTextSnapshot,
       analysisTextSnapshot: detectedElementsSnapshot.normalizedText,
       detectedElementsSnapshot: cloneSelectionContext(detectedElementsSnapshot),
-      createdAt: new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-      }),
+      selectionVersion: cardSelectionVersion,
+      isPinned: false,
     };
+  }
+
+  function addSelectRCard(card: SelectRCard) {
+    setSelectRCards((cards) => [
+      card,
+      ...cards.filter((existingCard) => existingCard.isPinned || existingCard.selectionVersion === card.selectionVersion),
+    ]);
+  }
+
+  function getDefinedTermDefinitionText(term: string) {
+    const normalizedTerm = term.toLocaleLowerCase();
+    const match = definedTerms.find(
+      (definedTerm) =>
+        definedTerm.term.toLocaleLowerCase() === normalizedTerm ||
+        definedTerm.detectedVariants.some((variant) => variant.toLocaleLowerCase() === normalizedTerm),
+    );
+
+    return match?.definitionText ?? "";
   }
 
   function createSelectRCard(action: SelectionAvailableAction) {
@@ -739,7 +781,10 @@ export function App() {
         ...baseCard,
         type: "definedTerms",
         result: {
-          confirmedDefinedTerms: selectionContextSnapshot.confirmedDefinedTerms.map((definedTerm) => ({ ...definedTerm })),
+          confirmedDefinedTerms: selectionContextSnapshot.confirmedDefinedTerms.map((definedTerm) => ({
+            ...definedTerm,
+            definitionText: getDefinedTermDefinitionText(definedTerm.term),
+          })),
           definedTermCandidates: selectionContextSnapshot.definedTermCandidates.map((candidate) => ({ ...candidate })),
         },
       };
@@ -758,12 +803,10 @@ export function App() {
         title: "Edit with AI (mock only)",
         type: "mockEdit",
         result: {
-          summary:
-            "Mock-only editing card. No real AI provider was called, and no selected text was sent outside this task pane.",
+          summary: "Drafting suggestions will appear here when a workplace-approved provider is configured.",
           notes: [
-            "A future provider could suggest tighter wording for only this selected text.",
-            "Contractr is still in AI-disabled/mock mode for this workflow.",
-            "Treat this card as a UI placeholder, not legal advice or real AI output.",
+            "No selected text was sent outside this task pane.",
+            "This is a mock-only placeholder, not legal advice.",
           ],
         },
       };
@@ -777,12 +820,59 @@ export function App() {
       };
     }
 
-    setSelectRCards((cards) => [card, ...cards]);
+    addSelectRCard(card);
     setMessage(`${action.label} card opened from the current selectR selection.`);
+  }
+
+  async function createSelectRMockExplanationCard(action: SelectionAvailableAction) {
+    if (!canStartAction()) {
+      return;
+    }
+
+    setActiveAction("explainSelectedClause");
+
+    try {
+      const selectedTextSnapshot = await readSelectedTextFromWord();
+      const cardSelectionVersion = selectedTextSnapshot === currentSelectionText ? selectionVersion : selectionVersion + 1;
+      updateCurrentSelectionText(selectedTextSnapshot);
+
+      if (!selectedTextSnapshot) {
+        setMessage("No clause text is selected. Select a clause in Word and try again.");
+        return;
+      }
+
+      const selectionContextSnapshot = detectSelectionContext(selectedTextSnapshot, {
+        knownDefinedTerms: hasAnalyzedDefinedTerms ? definedTerms : [],
+      });
+      const result = await aiProvider.explainClause({ selectedText: selectedTextSnapshot });
+      const card: SelectRMockExplanationCard = {
+        ...createBaseSelectRCard(action, selectedTextSnapshot, selectionContextSnapshot, cardSelectionVersion),
+        title: "Explain Selected Clause (mock only)",
+        type: "mockExplanation",
+        result,
+      };
+
+      setOutputKind("selected");
+      setOutputText("");
+      setCharacterCount(null);
+      addSelectRCard(card);
+      setMessage("Mock clause explanation card opened from the current selectR selection.");
+    } catch (error) {
+      console.error("Unable to explain selected clause with the mock provider.", error);
+      setMessage("Contractr could not explain the selected clause with the mock provider. Please try again.");
+    } finally {
+      clearActiveAction("explainSelectedClause");
+    }
   }
 
   function closeSelectRCard(cardId: string) {
     setSelectRCards((cards) => cards.filter((card) => card.id !== cardId));
+  }
+
+  function toggleSelectRCardPin(cardId: string) {
+    setSelectRCards((cards) =>
+      cards.map((card) => (card.id === cardId ? { ...card, isPinned: !card.isPinned } : card)),
+    );
   }
 
   async function selectFirstDocumentText(candidates: string[]) {
@@ -914,7 +1004,7 @@ export function App() {
             },
           };
 
-      setSelectRCards((cards) => [card, ...cards]);
+      addSelectRCard(card);
       setMessage(
         targetResult.found
           ? `${targetResult.target.referenceText} card opened from the current document.`
@@ -939,6 +1029,11 @@ export function App() {
       return;
     }
 
+    if (action.id === "explainSelectedClause") {
+      await createSelectRMockExplanationCard(action);
+      return;
+    }
+
     createSelectRCard(action);
   }
 
@@ -960,21 +1055,15 @@ export function App() {
     currentSelectionContext.definedTermCandidates.length > 0 ||
     currentSelectionContext.obligationSignals.length > 0 ||
     currentSelectionContext.isClauseLike;
-  const shouldShowMockExplanation = activeMode === "selectR" || outputKind === "clauseExplanation" || clauseExplanation;
   const shouldShowDocumentAnalysis =
-    activeMode === "analyzR" ||
-    outputKind === "definedTerms" ||
+    activeMode === "analyzR" &&
+    (outputKind === "definedTerms" ||
     outputKind === "crossReferences" ||
     outputKind === "obligations" ||
+    outputKind === "contractAnalysis" ||
     hasAnalyzedDefinedTerms ||
     hasAnalyzedCrossReferences ||
-    hasAnalyzedObligations;
-
-  function getCardSelectedTextPreview(card: SelectRCard) {
-    return card.selectedTextSnapshot.length > selectedClausePreviewLimit
-      ? `${card.selectedTextSnapshot.slice(0, selectedClausePreviewLimit).trimEnd()}...`
-      : card.selectedTextSnapshot;
-  }
+    hasAnalyzedObligations);
 
   function renderSelectRCardResult(card: SelectRCard) {
     if (card.type === "definedTerms") {
@@ -989,11 +1078,7 @@ export function App() {
                 {card.result.confirmedDefinedTerms.map((definedTerm) => (
                   <li key={`${card.id}-${definedTerm.term}-${definedTerm.matchedText}`}>
                     <strong>{definedTerm.term}</strong>
-                    <span>
-                      Known defined term
-                      {definedTerm.matchedText !== definedTerm.term ? `, matched as ${definedTerm.matchedText}` : ""}
-                      {definedTerm.confidenceLabel ? ` (${definedTerm.confidenceLabel})` : ""}
-                    </span>
+                    <span>{definedTerm.definitionText || "Definition was not found in the current analyzR results."}</span>
                   </li>
                 ))}
               </ul>
@@ -1006,7 +1091,7 @@ export function App() {
                 {card.result.definedTermCandidates.map((candidate) => (
                   <li key={`${card.id}-${candidate.source}-${candidate.term}`}>
                     <strong>{candidate.term}</strong>
-                    <span>{candidate.source}</span>
+                    <span>May be a defined term, but no definition was found.</span>
                   </li>
                 ))}
               </ul>
@@ -1063,6 +1148,34 @@ export function App() {
           <p className="definition-text">{card.result.summary}</p>
           <div className="issue-group">
             <h3>Mock notes</h3>
+            <ul>
+              {card.result.notes.map((note) => (
+                <li key={`${card.id}-${note}`}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        </>
+      );
+    }
+
+    if (card.type === "mockExplanation") {
+      return (
+        <>
+          <p className="mock-label">Mock output only - no real AI provider was called.</p>
+          <p className="definition-label">Mock summary</p>
+          <p className="definition-text">{card.result.summary}</p>
+          <p className="definition-label">Mock explanation</p>
+          <p className="definition-text">{card.result.explanation}</p>
+          <div className="issue-group">
+            <h3>Mock review points</h3>
+            <ul>
+              {card.result.reviewPoints.map((point) => (
+                <li key={`${card.id}-${point}`}>{point}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="issue-group">
+            <h3>Mock safety notes</h3>
             <ul>
               {card.result.notes.map((note) => (
                 <li key={`${card.id}-${note}`}>{note}</li>
@@ -1136,25 +1249,68 @@ export function App() {
         <section className="tool-group" aria-labelledby="selectr-heading">
           <h2 id="selectr-heading">selectR</h2>
           <p className="mode-description">selectR tools act on the text currently selected in Word.</p>
-          <section className="current-selection" aria-labelledby="current-selection-heading">
-            <h3 id="current-selection-heading">Current Selection</h3>
+          <section className="selection-context" aria-labelledby="available-actions-heading">
+            <h3 id="available-actions-heading">Available Actions</h3>
             {currentSelectionError ? <p className="term-meta">{currentSelectionError}</p> : null}
-            {currentSelectionText ? (
-              <>
-                <p className="definition-text">
-                  {currentSelectionText.length > selectedClausePreviewLimit
-                    ? `${currentSelectionText.slice(0, selectedClausePreviewLimit).trimEnd()}...`
-                    : currentSelectionText}
-                </p>
-                <p className="term-meta">{currentSelectionText.length.toLocaleString()} characters</p>
-                <p className="term-meta">Actions will use this selected text only.</p>
-              </>
+            {!currentSelectionText ? (
+              <p className="term-meta">Select text in Word to see context-aware actions.</p>
+            ) : currentSelectionContext.availableActions.length ? (
+              <div className="action-chip-list">
+                {currentSelectionContext.availableActions.map((action) => (
+                  <button
+                    className="action-chip"
+                    type="button"
+                    disabled={officeState !== "ready" || activeAction !== null}
+                    key={action.id}
+                    title={action.reason}
+                    onClick={() => {
+                      void handleSelectRAction(action);
+                    }}
+                  >
+                    <span>{action.label}</span>
+                    <small>{getSelectionActionStatusLabel(action)}</small>
+                  </button>
+                ))}
+              </div>
             ) : (
-              <p className="term-meta">Select text in Word to see context-aware options.</p>
+              <p className="term-meta">No context-aware actions are available for this selection yet.</p>
+            )}
+          </section>
+          <section className="selection-context" aria-labelledby="open-action-cards-heading">
+            <h3 id="open-action-cards-heading">Open Action Cards</h3>
+            {selectRCards.length ? (
+              <ol className="selectr-card-list">
+                {selectRCards.map((card) => (
+                  <li className="selectr-card" key={card.id}>
+                    <div className="selectr-card-header">
+                      <div className="selectr-card-title-group">
+                        <h4>{card.title}</h4>
+                        {card.isPinned ? <p className="term-meta">Pinned</p> : null}
+                      </div>
+                      <div className="selectr-card-actions">
+                        <button
+                          className={`pin-card-button${card.isPinned ? " pin-card-button-active" : ""}`}
+                          type="button"
+                          aria-pressed={card.isPinned}
+                          onClick={() => toggleSelectRCardPin(card.id)}
+                        >
+                          Pin
+                        </button>
+                        <button className="close-card-button" type="button" onClick={() => closeSelectRCard(card.id)}>
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                    {renderSelectRCardResult(card)}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="term-meta">No action cards open yet. Select text and choose an action to create one.</p>
             )}
           </section>
           <section className="selection-context" aria-labelledby="detected-elements-heading">
-            <h3 id="detected-elements-heading">Detected Elements</h3>
+            <h3 id="detected-elements-heading">Detected Elements — for bug fixing only</h3>
             {!currentSelectionText ? (
               <p className="term-meta">Select text in Word to detect references, defined terms, obligations, and clause-like text.</p>
             ) : hasDetectedSelectionElements ? (
@@ -1203,7 +1359,7 @@ export function App() {
                   </div>
                 ) : null}
                 {!hasAnalyzedDefinedTerms ? (
-                  <p className="term-meta">Run Analyze Defined Terms in analyzR for more accurate selectR defined-term detection.</p>
+                  <p className="term-meta">Run Analyze Contract in analyzR for more accurate selectR defined-term detection.</p>
                 ) : null}
                 {currentSelectionContext.obligationSignals.length ? (
                   <div className="selection-detection-group">
@@ -1226,155 +1382,36 @@ export function App() {
               <p className="term-meta">No selection-specific elements were detected yet.</p>
             )}
           </section>
-          <section className="selection-context" aria-labelledby="available-actions-heading">
-            <h3 id="available-actions-heading">Available Actions</h3>
-            {!currentSelectionText ? (
-              <p className="term-meta">Available actions will appear after Contractr detects useful context in the selection.</p>
-            ) : currentSelectionContext.availableActions.length ? (
-              <div className="action-chip-list">
-                {currentSelectionContext.availableActions.map((action) => (
-                  <button
-                    className="action-chip"
-                    type="button"
-                    disabled={officeState !== "ready" || activeAction !== null}
-                    key={action.id}
-                    title={action.reason}
-                    onClick={() => {
-                      void handleSelectRAction(action);
-                    }}
-                  >
-                    <span>{action.label}</span>
-                    <small>{getSelectionActionStatusLabel(action)}</small>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="term-meta">No context-aware actions are available for this selection yet.</p>
-            )}
-          </section>
-          <section className="selection-context" aria-labelledby="open-action-cards-heading">
-            <h3 id="open-action-cards-heading">Open Action Cards</h3>
-            {selectRCards.length ? (
-              <ol className="selectr-card-list">
-                {selectRCards.map((card) => (
-                  <li className="selectr-card" key={card.id}>
-                    <div className="selectr-card-header">
-                      <div>
-                        <h4>{card.title}</h4>
-                        <p className="term-meta">
-                          {card.actionLabel} - Created {card.createdAt}
-                        </p>
-                      </div>
-                      <button className="close-card-button" type="button" onClick={() => closeSelectRCard(card.id)}>
-                        Close
-                      </button>
-                    </div>
-                    <p className="definition-label">Selected text snapshot</p>
-                    <p className="definition-text">{getCardSelectedTextPreview(card)}</p>
-                    <p className="definition-label">Result</p>
-                    {renderSelectRCardResult(card)}
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="term-meta">No action cards open yet. Select text and choose an action to create one.</p>
-            )}
-          </section>
-          <button className="primary-button" disabled={isActionButtonDisabled("readSelected")} onClick={readSelectedText}>
-            {getButtonLabel("readSelected", "Read Selected Text")}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={isActionButtonDisabled("explainSelectedClause")}
-            onClick={explainSelectedClause}
-          >
-            {getButtonLabel("explainSelectedClause", "Explain Selected Clause")}
-          </button>
         </section>
       ) : (
         <section className="tool-group" aria-labelledby="analyzr-heading">
           <h2 id="analyzr-heading">analyzR</h2>
           <p className="mode-description">analyzR tools read the current Word document for deterministic analysis.</p>
-          <button className="primary-button" disabled={isActionButtonDisabled("readDocument")} onClick={readFullDocument}>
-            {getButtonLabel("readDocument", "Read Full Document")}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={isActionButtonDisabled("analyzeDefinedTerms")}
-            onClick={analyzeFullDocumentDefinedTerms}
-          >
-            {getButtonLabel("analyzeDefinedTerms", "Analyze Defined Terms")}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={isActionButtonDisabled("analyzeCrossReferences")}
-            onClick={analyzeFullDocumentCrossReferences}
-          >
-            {getButtonLabel("analyzeCrossReferences", "Analyze Cross-References")}
-          </button>
-          <button
-            className="secondary-button"
-            disabled={isActionButtonDisabled("analyzeObligations")}
-            onClick={analyzeFullDocumentObligations}
-          >
-            {getButtonLabel("analyzeObligations", "Analyze Obligations")}
+          <button className="primary-button" disabled={isActionButtonDisabled("analyzeContract")} onClick={analyzeContract}>
+            {getButtonLabel("analyzeContract", "Analyze Contract")}
           </button>
         </section>
       )}
 
-      <section className="output" aria-live="polite">
-        <p className="status">{message}</p>
-        {(outputKind === "document" ||
-          outputKind === "definedTerms" ||
-          outputKind === "crossReferences" ||
-          outputKind === "obligations") &&
-        characterCount !== null ? (
-          <p className="count">{characterCount.toLocaleString()} characters</p>
-        ) : null}
-        {shouldShowMockExplanation ? (
-          <section className="mock-explanation" aria-labelledby="mock-clause-explanation-heading">
-            <h2 id="mock-clause-explanation-heading">Mock Clause Explanation</h2>
-            <p className="mock-label">Mock output only - no real AI provider was called.</p>
-            {!clauseExplanation ? (
-              <p className="term-meta">Select a clause and click Explain Selected Clause to test the mock AI adapter.</p>
-            ) : (
-              <>
-                <p className="definition-label">Selected text preview</p>
-                <p className="definition-text">
-                  {clauseExplanationSelectedText.length > selectedClausePreviewLimit
-                    ? `${clauseExplanationSelectedText.slice(0, selectedClausePreviewLimit).trimEnd()}...`
-                    : clauseExplanationSelectedText}
-                </p>
-                <p className="definition-label">Mock summary</p>
-                <p className="definition-text">{clauseExplanation.summary}</p>
-                <p className="definition-label">Mock explanation</p>
-                <p className="definition-text">{clauseExplanation.explanation}</p>
-                <div className="issue-group">
-                  <h3>Mock review points</h3>
-                  <ul>
-                    {clauseExplanation.reviewPoints.map((point) => (
-                      <li key={point}>{point}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="issue-group">
-                  <h3>Mock safety notes</h3>
-                  <ul>
-                    {clauseExplanation.notes.map((note) => (
-                      <li key={note}>{note}</li>
-                    ))}
-                  </ul>
-                </div>
-              </>
-            )}
-          </section>
-        ) : null}
-        {shouldShowDocumentAnalysis ? (
-          <>
+      {activeMode === "analyzR" ? (
+        <section className="output" aria-live="polite">
+          <p className="status">{message}</p>
+          {(outputKind === "document" ||
+            outputKind === "definedTerms" ||
+            outputKind === "crossReferences" ||
+            outputKind === "obligations" ||
+            outputKind === "contractAnalysis") &&
+          characterCount !== null ? (
+            <p className="count">{characterCount.toLocaleString()} characters</p>
+          ) : null}
+          {shouldShowDocumentAnalysis ? (
+          <section className="contract-analysis-results" aria-labelledby="contract-analysis-results-heading">
+            <h2 id="contract-analysis-results-heading">Contract Analysis Results</h2>
+            <p className="term-meta">Deterministic local analysis only. No real AI provider was called.</p>
             <section className="potential-issues" aria-labelledby="potential-obligations-heading">
               <h2 id="potential-obligations-heading">Potential Obligations</h2>
               {!hasAnalyzedObligations ? (
-                <p className="term-meta">Run Analyze Obligations to check likely duties and timing requirements.</p>
+                <p className="term-meta">Click Analyze Contract to check likely duties and timing requirements.</p>
               ) : potentialObligations.length ? (
                 <ol className="defined-term-list">
                   {potentialObligations.map((obligation, index) => (
@@ -1416,7 +1453,7 @@ export function App() {
             <section className="potential-issues" aria-labelledby="cross-reference-issues-heading">
               <h2 id="cross-reference-issues-heading">Cross-Reference Issues</h2>
               {!hasAnalyzedCrossReferences ? (
-                <p className="term-meta">Run Analyze Cross-References to check section and schedule references.</p>
+                <p className="term-meta">Click Analyze Contract to check section and schedule references.</p>
               ) : crossReferenceIssueCount ? (
                 <div className="issue-group">
                   <h3>Potential Broken References</h3>
@@ -1444,7 +1481,7 @@ export function App() {
             <section className="potential-issues" aria-labelledby="potential-issues-heading">
               <h2 id="potential-issues-heading">Potential Issues</h2>
               {!hasAnalyzedDefinedTerms ? (
-                <p className="term-meta">Run Analyze Defined Terms to check defined-term issues.</p>
+                <p className="term-meta">Click Analyze Contract to check defined-term issues.</p>
               ) : issueCount ? (
                 <>
                   {potentialIssues.definedButUnusedTerms.length ? (
@@ -1514,7 +1551,7 @@ export function App() {
             <section aria-labelledby="defined-terms-heading">
               <h2 id="defined-terms-heading">Defined Terms</h2>
               {!hasAnalyzedDefinedTerms ? (
-                <p className="term-meta">Run Analyze Defined Terms to list likely defined terms.</p>
+                <p className="term-meta">Click Analyze Contract to list likely defined terms.</p>
               ) : definedTerms.length ? (
                 <ol className="defined-term-list">
                   {definedTerms.map((result) => (
@@ -1559,10 +1596,11 @@ export function App() {
                 <p className="term-meta">No likely defined terms were found using the current deterministic patterns.</p>
               )}
             </section>
-          </>
-        ) : null}
-        {outputText ? <pre>{outputText}</pre> : null}
-      </section>
+          </section>
+          ) : null}
+          {outputText ? <pre>{outputText}</pre> : null}
+        </section>
+      ) : null}
     </main>
   );
 }
