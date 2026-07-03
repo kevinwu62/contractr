@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 15F — Read-only Open Section Cards
-**Last completed milestone:** Step 15F — Read-only Open Section Cards
-**Next task:** Retest Open Section cards and selectR/analyzR regressions in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 15G — OpenAI Provider Scaffolding
+**Last completed milestone:** Step 15G — OpenAI Provider Scaffolding
+**Next task:** Add a safe local/server-side call path before exposing OpenAI in the Word task pane UI.
 
 ---
 
@@ -1237,6 +1237,67 @@ Notes:
 - `packages/contract-core` has no `typecheck` script or `tsconfig.json`, so direct package typecheck is not currently available.
 - Known limitation: Open Section extraction is still approximate and best used as a preview/navigation aid.
 - Known limitation: manual Word retesting is still needed for Open Section cards and existing selectR/analyzR regressions.
+
+---
+
+### Step 15G — OpenAI Provider Scaffolding
+
+**Status:** Done — package-only scaffolding; not wired into frontend UI.
+
+Goal:
+
+Add OpenAI as the first real AI provider behind the existing `AIProvider` interface without exposing secrets in the Word task pane.
+
+Tasks:
+
+- [x] Create `OpenAIProvider` in `packages/ai-adapters`.
+- [x] Implement the existing `AIProvider` methods.
+- [x] Use `OPENAI_API_KEY` and configurable `OPENAI_MODEL`.
+- [x] Add `.env.example` placeholders only.
+- [x] Confirm `.env` and `.env.*` remain ignored by Git.
+- [x] Keep `MockProvider` as the active/default frontend provider.
+- [x] Do not wire OpenAI into the Vite/Office task pane because direct frontend calls would expose the API key.
+- [x] Run local validation.
+
+Definition of done:
+
+- [x] `OpenAIProvider` exists for future server-side/local-proxy use.
+- [x] The Word add-in still uses `MockProvider`.
+- [x] No OpenAI API key is committed or exposed to the frontend bundle.
+
+Suggested commit message:
+
+`Add OpenAI provider scaffolding`
+
+Notes:
+
+- Added `packages/ai-adapters/src/openAIProvider.ts`.
+- Exported `OpenAIProvider` from `packages/ai-adapters/src/index.ts`.
+- Added root `.env.example` with placeholder values:
+  - `OPENAI_API_KEY=your_openai_api_key_here`
+  - `OPENAI_MODEL=gpt-5.5`
+- `OpenAIProvider` calls the OpenAI Responses API and defaults to `gpt-5.5`, which current OpenAI docs list as the latest flagship model.
+- `OpenAIProvider` reads the API key only from constructor options or server-side `process.env.OPENAI_API_KEY`.
+- `OpenAIProvider` refuses browser/frontend runtime execution with a clear error because a Vite/Office task pane is client-side code and cannot safely protect `OPENAI_API_KEY`.
+- The provider implements:
+  - `explainClause`
+  - `summarizeClause`
+  - `compareToPlaybook`
+  - `reviewDefinedTermAnalysis`
+  - `reviewCrossReferenceAnalysis`
+  - `reviewObligationAnalysis`
+- Selected-clause methods send only the selected text passed into the provider.
+- Deterministic review methods send only the structured review input supplied to the provider, not hidden full-document text.
+- OpenAI is for personal/non-confidential testing only and is not appropriate for workplace confidential documents unless explicitly approved.
+- No provider selector was added because selecting OpenAI in the frontend before a safe server-side call path exists would create an unsafe architecture.
+- Known limitation: real OpenAI calls are not reachable from the Word task pane yet. Next safe step is a minimal local-only server/proxy that keeps the API key out of the browser bundle.
+- Validation:
+  - `npm run typecheck` in `apps/word-addin` passed.
+  - `npm run build` in `apps/word-addin` passed.
+  - `xmllint --noout manifest.xml` in `apps/word-addin` passed.
+  - `../../apps/word-addin/node_modules/.bin/tsc --noEmit` in `packages/ai-adapters` passed.
+  - Bundled mocked `OpenAIProvider.explainClause` smoke check with `esbuild` passed; no real OpenAI API call was made.
+  - `npm run typecheck` in `packages/ai-adapters` is still blocked because that package has no local `node_modules` and cannot find `tsc` directly.
 
 ---
 

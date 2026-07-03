@@ -1,4 +1,5 @@
 export { MockProvider } from "./mockProvider";
+export { OpenAIProvider } from "./openAIProvider";
 
 export type {
   AIProvider,
