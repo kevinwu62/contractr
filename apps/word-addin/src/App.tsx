@@ -122,6 +122,25 @@ type NavigationTarget = {
   successMessage: string;
 };
 
+type SelectRActionGroupId =
+  | "goSection"
+  | "openSection"
+  | "defineTerms"
+  | "analyzeObligations"
+  | "explainClause"
+  | "aiEdit";
+
+type SelectRReferenceTarget = SelectionContext["references"][number];
+
+type SelectRActionGroup = {
+  id: SelectRActionGroupId;
+  label: string;
+  action?: SelectionAvailableAction;
+  targets?: SelectRReferenceTarget[];
+  status: "available" | "mockOnly" | "unavailable";
+  reason: string;
+};
+
 const wordSearchCandidateLimit = 240;
 
 const emptyPotentialIssues: PotentialIssues = {
@@ -239,14 +258,6 @@ function getTermNavigationTarget(term: string): NavigationTarget {
   };
 }
 
-function getSelectionActionStatusLabel(action: SelectionAvailableAction) {
-  if (action.status === "mockOnly") {
-    return "Mock only";
-  }
-
-  return "Available";
-}
-
 function cloneSelectionContext(context: SelectionContext): SelectionContext {
   return {
     normalizedText: context.normalizedText,
@@ -271,6 +282,32 @@ function getReferenceNavigationMessage(target: CrossReferenceTarget) {
   return `Selected the likely ${target.type} heading for ${target.referenceText}.`;
 }
 
+function getReferenceButtonLabel(reference: SelectRReferenceTarget) {
+  return reference.referenceText;
+}
+
+function getReferenceActionLabel(actionLabel: string, reference?: SelectRReferenceTarget) {
+  return reference ? `${actionLabel} ${getReferenceButtonLabel(reference)}` : actionLabel;
+}
+
+function getReferenceChoiceKey(reference: SelectRReferenceTarget, index: number) {
+  return `${index}:${reference.type}:${reference.referenceText}`;
+}
+
+function createSelectRAction(
+  id: SelectionActionId,
+  label: string,
+  status: SelectionAvailableAction["status"],
+  reason: string,
+): SelectionAvailableAction {
+  return {
+    id,
+    label,
+    status,
+    reason,
+  };
+}
+
 export function App() {
   const [officeState, setOfficeState] = useState<OfficeState>("loading");
   const [activeMode, setActiveMode] = useState<ActiveMode>("selectR");
@@ -286,6 +323,7 @@ export function App() {
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [currentSelectionError, setCurrentSelectionError] = useState("");
   const [selectRCards, setSelectRCards] = useState<SelectRCard[]>([]);
+  const [selectRTargetChoices, setSelectRTargetChoices] = useState<Partial<Record<SelectRActionGroupId, string>>>({});
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
   const [hasAnalyzedCrossReferences, setHasAnalyzedCrossReferences] = useState(false);
   const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
@@ -748,10 +786,7 @@ export function App() {
   }
 
   function addSelectRCard(card: SelectRCard) {
-    setSelectRCards((cards) => [
-      card,
-      ...cards.filter((existingCard) => existingCard.isPinned || existingCard.selectionVersion === card.selectionVersion),
-    ]);
+    setSelectRCards((cards) => [card, ...cards.filter((existingCard) => existingCard.isPinned)]);
   }
 
   function getDefinedTermDefinitionText(term: string) {
@@ -800,7 +835,7 @@ export function App() {
     } else if (action.id === "editWithAi") {
       card = {
         ...baseCard,
-        title: "Edit with AI (mock only)",
+        title: "AI Edit (mock)",
         type: "mockEdit",
         result: {
           summary: "Drafting suggestions will appear here when a workplace-approved provider is configured.",
@@ -847,7 +882,7 @@ export function App() {
       const result = await aiProvider.explainClause({ selectedText: selectedTextSnapshot });
       const card: SelectRMockExplanationCard = {
         ...createBaseSelectRCard(action, selectedTextSnapshot, selectionContextSnapshot, cardSelectionVersion),
-        title: "Explain Selected Clause (mock only)",
+        title: "Explain Clause (mock)",
         type: "mockExplanation",
         result,
       };
@@ -920,13 +955,13 @@ export function App() {
     }
   }
 
-  async function navigateToSelectionReference() {
+  async function navigateToSelectionReference(referenceTarget?: SelectRReferenceTarget) {
     if (!canStartAction()) {
       return;
     }
 
     const selectionContextSnapshot = cloneSelectionContext(currentSelectionContext);
-    const reference = getFirstSelectionReference(selectionContextSnapshot);
+    const reference = referenceTarget ?? getFirstSelectionReference(selectionContextSnapshot);
 
     if (!currentSelectionText || !reference) {
       setMessage("Select text containing a section, article, schedule, or exhibit reference before navigating.");
@@ -958,14 +993,14 @@ export function App() {
     }
   }
 
-  async function openSelectionReferenceInSidebar(action: SelectionAvailableAction) {
+  async function openSelectionReferenceInSidebar(action: SelectionAvailableAction, referenceTarget?: SelectRReferenceTarget) {
     if (!canStartAction()) {
       return;
     }
 
     const selectedTextSnapshot = currentSelectionText;
     const selectionContextSnapshot = cloneSelectionContext(currentSelectionContext);
-    const reference = getFirstSelectionReference(selectionContextSnapshot);
+    const reference = referenceTarget ?? getFirstSelectionReference(selectionContextSnapshot);
 
     if (!selectedTextSnapshot || !reference) {
       setMessage("Select text containing a section, article, schedule, or exhibit reference before opening a section card.");
@@ -1018,14 +1053,14 @@ export function App() {
     }
   }
 
-  async function handleSelectRAction(action: SelectionAvailableAction) {
+  async function handleSelectRAction(action: SelectionAvailableAction, referenceTarget?: SelectRReferenceTarget) {
     if (action.id === "goToSectionOrArticle") {
-      await navigateToSelectionReference();
+      await navigateToSelectionReference(referenceTarget);
       return;
     }
 
     if (action.id === "openSectionOrArticleInSidebar") {
-      await openSelectionReferenceInSidebar(action);
+      await openSelectionReferenceInSidebar(action, referenceTarget);
       return;
     }
 
@@ -1049,6 +1084,95 @@ export function App() {
       }),
     [currentSelectionText, definedTerms, hasAnalyzedDefinedTerms],
   );
+  const selectRActionGroups = useMemo<SelectRActionGroup[]>(() => {
+    const references = currentSelectionContext.references;
+    const hasSelection = Boolean(currentSelectionText);
+    const hasDefinedTerms =
+      currentSelectionContext.confirmedDefinedTerms.length > 0 || currentSelectionContext.definedTermCandidates.length > 0;
+    const hasObligations = currentSelectionContext.obligationSignals.length > 0;
+    const hasClauseLikeSelection = currentSelectionContext.isClauseLike;
+
+    return [
+      {
+        id: "goSection",
+        label: "Go section",
+        action: createSelectRAction(
+          "goToSectionOrArticle",
+          "Go section",
+          "available",
+          "A section, article, schedule, or exhibit reference was detected.",
+        ),
+        targets: references,
+        status: hasSelection && references.length ? "available" : "unavailable",
+        reason: references.length
+          ? "Select a target to navigate to its likely heading."
+          : "No section, article, schedule, or exhibit reference detected.",
+      },
+      {
+        id: "openSection",
+        label: "Open section",
+        action: createSelectRAction(
+          "openSectionOrArticleInSidebar",
+          "Open section",
+          "available",
+          "A section, article, schedule, or exhibit reference was detected.",
+        ),
+        targets: references,
+        status: hasSelection && references.length ? "available" : "unavailable",
+        reason: references.length
+          ? "Select a target to open its likely text in a card."
+          : "No section, article, schedule, or exhibit reference detected.",
+      },
+      {
+        id: "defineTerms",
+        label: "Define terms",
+        action: createSelectRAction(
+          "analyzeDefinedTerms",
+          "Defined Terms",
+          "available",
+          "A likely defined term was detected in the selection.",
+        ),
+        status: hasSelection && hasDefinedTerms ? "available" : "unavailable",
+        reason: hasDefinedTerms ? "Defined terms or candidates were detected." : "No defined terms detected.",
+      },
+      {
+        id: "analyzeObligations",
+        label: "Analyze obligations",
+        action: createSelectRAction(
+          "analyzeRelevantObligations",
+          "Obligations",
+          "available",
+          "Obligation language was detected in the selection.",
+        ),
+        status: hasSelection && hasObligations ? "available" : "unavailable",
+        reason: hasObligations ? "Obligation language was detected." : "No obligation language detected.",
+      },
+      {
+        id: "explainClause",
+        label: "Explain clause",
+        action: createSelectRAction(
+          "explainSelectedClause",
+          "Explain Clause",
+          "mockOnly",
+          "The selection looks clause-like. This uses only the local mock provider.",
+        ),
+        status: hasSelection && hasClauseLikeSelection ? "mockOnly" : "unavailable",
+        reason: hasClauseLikeSelection ? "Clause-like text was detected." : "No clause-like selection detected.",
+      },
+      {
+        id: "aiEdit",
+        label: "AI edit",
+        action: createSelectRAction(
+          "editWithAi",
+          "AI Edit",
+          "mockOnly",
+          "The selection looks clause-like, but real AI editing is not enabled.",
+        ),
+        status: hasSelection && hasClauseLikeSelection ? "mockOnly" : "unavailable",
+        reason: hasClauseLikeSelection ? "Clause-like text was detected." : "No clause-like selection detected.",
+      },
+    ];
+  }, [currentSelectionContext, currentSelectionText]);
   const hasDetectedSelectionElements =
     currentSelectionContext.references.length > 0 ||
     currentSelectionContext.confirmedDefinedTerms.length > 0 ||
@@ -1254,27 +1378,81 @@ export function App() {
             {currentSelectionError ? <p className="term-meta">{currentSelectionError}</p> : null}
             {!currentSelectionText ? (
               <p className="term-meta">Select text in Word to see context-aware actions.</p>
-            ) : currentSelectionContext.availableActions.length ? (
-              <div className="action-chip-list">
-                {currentSelectionContext.availableActions.map((action) => (
-                  <button
-                    className="action-chip"
-                    type="button"
-                    disabled={officeState !== "ready" || activeAction !== null}
-                    key={action.id}
-                    title={action.reason}
-                    onClick={() => {
-                      void handleSelectRAction(action);
-                    }}
+            ) : null}
+            <div className="available-action-grid">
+              {selectRActionGroups.map((group) => {
+                const isGroupAvailable = group.status !== "unavailable" && group.action;
+                const isDisabled = officeState !== "ready" || activeAction !== null || !isGroupAvailable;
+                const targets = group.targets ?? [];
+                const selectedChoiceKey = selectRTargetChoices[group.id];
+                const selectedTargetIndex = targets.findIndex(
+                  (target, targetIndex) => getReferenceChoiceKey(target, targetIndex) === selectedChoiceKey,
+                );
+                const effectiveTargetIndex = selectedTargetIndex >= 0 ? selectedTargetIndex : 0;
+                const selectedTarget = targets[effectiveTargetIndex];
+                const effectiveChoiceKey = selectedTarget ? getReferenceChoiceKey(selectedTarget, effectiveTargetIndex) : "";
+                const actionLabel =
+                  group.id === "goSection"
+                    ? getReferenceActionLabel("Go", selectedTarget)
+                    : group.id === "openSection"
+                      ? getReferenceActionLabel("Open", selectedTarget)
+                      : group.label;
+
+                return (
+                  <div
+                    className={`available-action-item${isGroupAvailable ? "" : " available-action-item-disabled"}`}
+                    key={group.id}
                   >
-                    <span>{action.label}</span>
-                    <small>{getSelectionActionStatusLabel(action)}</small>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="term-meta">No context-aware actions are available for this selection yet.</p>
-            )}
+                    {group.targets && targets.length > 1 ? (
+                      <select
+                        className="action-target-picker"
+                        value={effectiveChoiceKey}
+                        aria-label={`${group.label} target`}
+                        disabled={isDisabled}
+                        onChange={(event) =>
+                          setSelectRTargetChoices((choices) => ({ ...choices, [group.id]: event.target.value }))
+                        }
+                      >
+                        {targets.map((target, targetIndex) => (
+                          <option value={getReferenceChoiceKey(target, targetIndex)} key={getReferenceChoiceKey(target, targetIndex)}>
+                            {getReferenceButtonLabel(target)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {group.targets ? (
+                      <button
+                        className="action-box"
+                        type="button"
+                        disabled={isDisabled}
+                        title={group.reason}
+                        onClick={() => {
+                          if (group.action && selectedTarget) {
+                            void handleSelectRAction(group.action, selectedTarget);
+                          }
+                        }}
+                      >
+                        {actionLabel}
+                      </button>
+                    ) : (
+                      <button
+                        className="action-box"
+                        type="button"
+                        disabled={isDisabled}
+                        title={group.reason}
+                        onClick={() => {
+                          if (group.action) {
+                            void handleSelectRAction(group.action);
+                          }
+                        }}
+                      >
+                        {group.label}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </section>
           <section className="selection-context" aria-labelledby="open-action-cards-heading">
             <h3 id="open-action-cards-heading">Open Action Cards</h3>
@@ -1285,16 +1463,17 @@ export function App() {
                     <div className="selectr-card-header">
                       <div className="selectr-card-title-group">
                         <h4>{card.title}</h4>
-                        {card.isPinned ? <p className="term-meta">Pinned</p> : null}
                       </div>
                       <div className="selectr-card-actions">
                         <button
                           className={`pin-card-button${card.isPinned ? " pin-card-button-active" : ""}`}
                           type="button"
+                          aria-label={card.isPinned ? "Unpin card" : "Pin card"}
                           aria-pressed={card.isPinned}
+                          title={card.isPinned ? "Unpin card" : "Pin card"}
                           onClick={() => toggleSelectRCardPin(card.id)}
                         >
-                          Pin
+                          📌
                         </button>
                         <button className="close-card-button" type="button" onClick={() => closeSelectRCard(card.id)}>
                           Close

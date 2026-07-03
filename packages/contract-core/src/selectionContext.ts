@@ -89,7 +89,7 @@ function addUniqueByKey<T>(items: T[], seen: Set<string>, key: string, item: T) 
 }
 
 function detectSelectionReferences(selectedText: string): SelectionReference[] {
-  const references: SelectionReference[] = [];
+  const references: Array<SelectionReference & { index: number }> = [];
   const seen = new Set<string>();
   const patterns: Array<{ pattern: RegExp; type: SelectionReferenceType }> = [
     { pattern: /\bSection\s+\d+(?:\.\d+)*(?:\([a-z0-9ivxlcdm]+\))*/gi, type: "section" },
@@ -101,11 +101,16 @@ function detectSelectionReferences(selectedText: string): SelectionReference[] {
   for (const { pattern, type } of patterns) {
     for (const match of selectedText.matchAll(pattern)) {
       const referenceText = normalizeWhitespace(match[0]);
-      addUniqueByKey(references, seen, `${type}:${referenceText}`, { referenceText, type });
+      addUniqueByKey(references, seen, `${type}:${referenceText}`, { referenceText, type, index: match.index });
     }
   }
 
-  return references;
+  return references
+    .sort((first, second) => first.index - second.index)
+    .map((reference) => ({
+      referenceText: reference.referenceText,
+      type: reference.type,
+    }));
 }
 
 function isLikelyDefinedTerm(value: string) {
@@ -353,13 +358,13 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
     actions.push(
       {
         id: "goToSectionOrArticle",
-        label: "Go to Section/Article",
+        label: "Go section",
         status: "available",
         reason: "A section, article, schedule, or exhibit reference was detected.",
       },
       {
         id: "openSectionOrArticleInSidebar",
-        label: "Open Section/Article in Sidebar",
+        label: "Open section",
         status: "available",
         reason: "A section, article, schedule, or exhibit reference was detected.",
       },
@@ -369,7 +374,7 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
   if (context.confirmedDefinedTerms.length > 0 || context.definedTermCandidates.length > 0) {
     actions.push({
       id: "analyzeDefinedTerms",
-      label: "Analyze Defined Terms",
+      label: "Define terms",
       status: "available",
       reason: "A likely defined term was detected in the selection.",
     });
@@ -378,7 +383,7 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
   if (context.obligationSignals.length > 0) {
     actions.push({
       id: "analyzeRelevantObligations",
-      label: "Analyze Relevant Obligations",
+      label: "Analyze obligations",
       status: "available",
       reason: "Obligation language was detected in the selection.",
     });
@@ -387,14 +392,14 @@ function getAvailableActions(context: Omit<SelectionContext, "availableActions">
   if (context.isClauseLike) {
     actions.push({
       id: "explainSelectedClause",
-      label: "Explain Selected Clause",
+      label: "Explain clause",
       status: "mockOnly",
       reason: "The selection looks clause-like. This uses only the local mock provider.",
     });
 
     actions.push({
       id: "editWithAi",
-      label: "Edit with AI",
+      label: "AI edit",
       status: "mockOnly",
       reason: "The selection looks clause-like, but real AI editing is not enabled.",
     });

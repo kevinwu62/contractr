@@ -151,8 +151,7 @@ h1 {
 }
 
 .selection-detection-list,
-.selection-detection-group,
-.action-chip-list {
+.selection-detection-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -186,31 +185,61 @@ h1 {
   font-size: 0.86rem;
 }
 
-.action-chip {
+.available-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.available-action-item {
   display: flex;
+  min-height: 58px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-box {
   width: 100%;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  min-height: 58px;
   border: 1px solid #b8c4d0;
   border-radius: 6px;
   background: #ffffff;
   color: #102033;
+  cursor: pointer;
+  font-size: 0.8rem;
   font-weight: 700;
-  padding: 10px;
+  line-height: 1.2;
+  padding: 6px;
   text-align: left;
 }
 
-.action-chip:disabled {
-  cursor: not-allowed;
-  opacity: 0.65;
+.action-target-picker {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #c8d2dc;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #394957;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 4px;
 }
 
-.action-chip small {
-  flex: 0 0 auto;
-  color: #506070;
-  font-size: 0.76rem;
-  font-weight: 700;
+.action-target-picker + .action-box {
+  min-height: 32px;
+}
+
+.action-box:disabled,
+.action-target-picker:disabled {
+  border-color: #d9dee7;
+  background: #eef2f6;
+  color: #7b8794;
+  cursor: not-allowed;
+}
+
+.action-box:hover:not(:disabled),
+.action-target-picker:hover:not(:disabled) {
+  background: #e7f4f7;
 }
 
 .selectr-card-list {
@@ -226,13 +255,11 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid #d9dee7;
-  padding-top: 12px;
-}
-
-.selectr-card:first-child {
-  border-top: 0;
-  padding-top: 0;
+  border: 1px solid #c8d2dc;
+  border-radius: 6px;
+  background: #fbfcfd;
+  padding: 12px;
+  box-shadow: 0 1px 2px rgba(16, 32, 51, 0.06);
 }
 
 .selectr-card-header {
@@ -279,6 +306,17 @@ h1 {
   font-size: 0.82rem;
   font-weight: 700;
   padding: 6px 8px;
+}
+
+.pin-card-button {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.86rem;
+  line-height: 1;
+  padding: 0;
 }
 
 .pin-card-button-active {
@@ -454,6 +492,8 @@ pre {
 }
 
 .link-button:focus-visible,
+.action-box:focus-visible,
+.action-target-picker:focus-visible,
 .small-action-button:focus-visible,
 .mode-button:focus-visible,
 .pin-card-button:focus-visible,

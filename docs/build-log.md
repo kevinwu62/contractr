@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 15B — selectR Card Behavior and Layout Cleanup
-**Last completed milestone:** Step 15A — selectR/analyzR UI Cleanup
-**Next task:** Retest the updated selectR card behavior and analyzR scoping in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 15C — selectR Action Grid and Card Visual Cleanup
+**Last completed milestone:** Step 15B — selectR Card Behavior and Layout Cleanup
+**Next task:** Retest the compact selectR action taskbar, target picker, pin icon, and temporary-card replacement behavior in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -1016,6 +1016,75 @@ Notes:
 
 ---
 
+### Step 15C — selectR Action Grid and Card Visual Cleanup
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Make selectR actions more compact, predictable, target-specific, and visually distinct.
+
+Tasks:
+
+- [x] Replace the vertical Available Actions list with a compact 2 x 3 taskbar grid.
+- [x] Keep six stable action categories visible: `Go section`, `Open section`, `Define terms`, `Analyze obligations`, `Explain clause`, and `AI edit`.
+- [x] Show unavailable action categories as disabled/greyed out instead of hiding them or adding status tags.
+- [x] Remove nested action buttons inside action boxes.
+- [x] Show direct single-target labels such as `Go Section 4.1` and `Open Schedule D`.
+- [x] Use a compact target picker for multiple detected section, article, schedule, or exhibit references.
+- [x] Make each `Go section` target navigate to that specific detected reference.
+- [x] Make each `Open section` target open a card for that specific detected reference.
+- [x] Preserve reference order based on where references appear in the selection.
+- [x] Make each open selectR card appear as its own bordered visual box.
+- [x] Replace the text `Pin` button with a smaller pin icon button and visible active state.
+- [x] Remove the separate `Pinned` subtitle under card titles.
+- [x] Update new-card behavior so pinned cards remain and unpinned cards are replaced.
+- [x] Run local validation and smoke checks.
+- [ ] Retest in Word for Mac with the fake Contractr test agreement.
+- [ ] Commit working compact action/card cleanup.
+
+Definition of done:
+
+- [x] Available Actions uses a compact 3-column grid that forms a 2-row taskbar.
+- [x] Disabled action categories remain visible without `available`, `unavailable`, or `no target` labels.
+- [x] Multiple references such as `Section 2.1`, `Article IV`, and `Section 5.3` remain selectable through a compact picker.
+- [x] Open action cards are visually distinct from each other.
+- [x] Opening a new action card keeps pinned cards, removes unpinned cards, and adds the new card unpinned.
+- [ ] Kevin confirms the behavior in Word for Mac.
+
+Suggested commit message:
+
+`Compact selectR actions and refine cards`
+
+Notes:
+
+- `apps/word-addin/src/App.tsx` now derives six stable selectR action groups from the current selection context.
+- `apps/word-addin/src/App.tsx` now renders Available Actions as one clean action button per category, without status tags or nested button structures.
+- Reference actions use direct labels for single-reference selections, such as `Go Section 4.1` and `Open Section 4.1`.
+- Multiple-reference selections use a compact target picker above the action button, so Kevin can choose each detected section, article, schedule, or exhibit without making Available Actions tall again.
+- Target-specific reference handlers now accept an explicit detected reference, so a click on `Article IV` does not fall back to the first detected section.
+- `packages/contract-core/src/selectionContext.ts` now returns detected references in selection order and uses shorter action labels in its available-action metadata.
+- `apps/word-addin/src/styles.css` now styles Available Actions as a compact 3-column grid intended to display as two rows for the six stable categories.
+- Unavailable actions are visible, disabled, and greyed out through button/select styling only.
+- `selectR` cards now have their own border, background, spacing, and light shadow instead of relying on divider lines.
+- The pin control is now a smaller `📌` icon button with `aria-label="Pin card"` / `aria-label="Unpin card"` and `aria-pressed` state.
+- Pinned state is shown by the active pin button styling, not by extra subtitle text.
+- New card creation now filters existing cards down to pinned cards only before adding the new unpinned card.
+- If Kevin unpins a card, that card becomes temporary again and will be replaced the next time a new action card opens.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, real AI provider, document edits, selected-text logging, or full-document logging was added.
+- In-place validation passed:
+  - `npm run typecheck` in `apps/word-addin`
+  - `npm run build` in `apps/word-addin`
+  - `xmllint --noout apps/word-addin/manifest.xml`
+  - `../../apps/word-addin/node_modules/.bin/tsc --noEmit` in `packages/ai-adapters`
+- `npm run typecheck` in `packages/ai-adapters` did not run directly because that package does not have its own installed `node_modules`; the shared add-in TypeScript binary passed against the package instead.
+- `packages/contract-core` has no standalone validation script; its TypeScript is still covered through the add-in typecheck/build path.
+- Known limitation: manual Word retesting is still needed for the compact grid, target picker, pin button, temporary-card replacement behavior, and per-reference navigation/sidebar behavior.
+- Known limitation: multiple-reference actions use a compact dropdown picker rather than showing every target as a separate always-visible button, to preserve the 2 x 3 taskbar height.
+- Known limitation: clause availability still depends on the existing deterministic clause-like heuristic.
+
+---
+
 ### Step 16 — Demo Materials
 
 **Status:** Not started
@@ -1132,14 +1201,17 @@ Notes:
 
 Move only the current milestone’s tasks here when work starts.
 
-- [x] Step 15B: Move and rename `Detected Elements — for bug fixing only`.
-- [x] Step 15B: Add temporary-by-default selectR card cleanup.
-- [x] Step 15B: Add selectR card Pin behavior.
-- [x] Step 15B: Scope analyzR results to analyzR only.
-- [x] Step 15B: Simplify selectR card content.
-- [x] Step 15B: Run local validation and smoke checks.
-- [ ] Step 15B: Retest in Word on Mac with the fake Contractr test agreement.
-- [ ] Step 15B: Commit working card/layout cleanup.
+- [x] Step 15C: Redesign Available Actions as a compact stable grid.
+- [x] Step 15C: Keep unavailable action categories visible but disabled.
+- [x] Step 15C: Add per-reference section/article action targets.
+- [x] Step 15C: Preserve reference order from the selected text.
+- [x] Step 15C: Make open selectR cards visually distinct.
+- [x] Step 15C: Remove nested action buttons and availability tags.
+- [x] Step 15C: Replace text Pin button with a pin icon state.
+- [x] Step 15C: Replace unpinned cards whenever a new action card opens.
+- [x] Step 15C: Run local validation and smoke checks.
+- [ ] Step 15C: Retest in Word on Mac with the fake Contractr test agreement.
+- [ ] Step 15C: Commit working compact action/card cleanup.
 
 ---
 
