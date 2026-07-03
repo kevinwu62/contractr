@@ -213,24 +213,55 @@ h1 {
   text-align: left;
 }
 
-.action-target-picker {
-  width: 100%;
+.action-target-cell {
+  display: flex;
+  min-height: 58px;
+  max-height: 58px;
   min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+  border: 1px solid #b8c4d0;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 5px;
+}
+
+.action-target-cell-label {
+  color: #394957;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.action-target-button-row {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.action-target-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  max-width: 90px;
   border: 1px solid #c8d2dc;
   border-radius: 5px;
   background: #ffffff;
-  color: #394957;
+  color: #102033;
+  cursor: pointer;
   font-size: 0.72rem;
   font-weight: 700;
-  padding: 3px 4px;
-}
-
-.action-target-picker + .action-box {
-  min-height: 32px;
+  line-height: 1.15;
+  overflow: hidden;
+  padding: 4px 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-box:disabled,
-.action-target-picker:disabled {
+.action-target-button:disabled {
   border-color: #d9dee7;
   background: #eef2f6;
   color: #7b8794;
@@ -238,7 +269,7 @@ h1 {
 }
 
 .action-box:hover:not(:disabled),
-.action-target-picker:hover:not(:disabled) {
+.action-target-button:hover:not(:disabled) {
   background: #e7f4f7;
 }
 
@@ -296,6 +327,37 @@ h1 {
   padding-top: 0;
 }
 
+.selectr-card-result-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.selectr-card-result-list li {
+  border-top: 1px solid #e5e9ef;
+  padding-top: 8px;
+}
+
+.selectr-card-result-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.selectr-card-result-list strong,
+.selectr-card-result-list span {
+  display: block;
+  line-height: 1.4;
+}
+
+.selectr-card-result-list span {
+  margin-top: 2px;
+  color: #506070;
+  font-size: 0.92rem;
+}
+
 .pin-card-button,
 .close-card-button {
   border: 1px solid #b8c4d0;
@@ -314,15 +376,47 @@ h1 {
   height: 30px;
   align-items: center;
   justify-content: center;
-  font-size: 0.86rem;
-  line-height: 1;
   padding: 0;
 }
 
 .pin-card-button-active {
-  border-color: #155e75;
-  background: #155e75;
-  color: #ffffff;
+  border-color: #5f6f7e;
+  background: #eef2f6;
+  color: #24313f;
+}
+
+.pin-card-icon {
+  position: relative;
+  display: block;
+  width: 13px;
+  height: 15px;
+  transform: rotate(35deg);
+}
+
+.pin-card-icon::before {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  width: 7px;
+  height: 8px;
+  border-radius: 2px 2px 1px 1px;
+  background: #7b8794;
+  content: "";
+}
+
+.pin-card-icon::after {
+  position: absolute;
+  top: 7px;
+  left: 6px;
+  width: 2px;
+  height: 8px;
+  background: #7b8794;
+  content: "";
+}
+
+.pin-card-button-active .pin-card-icon::before,
+.pin-card-button-active .pin-card-icon::after {
+  background: #24313f;
 }
 
 .pin-card-button:hover,
@@ -331,7 +425,7 @@ h1 {
 }
 
 .pin-card-button-active:hover {
-  background: #164e63;
+  background: #e5e9ef;
 }
 
 .secondary-button {
@@ -493,7 +587,7 @@ pre {
 
 .link-button:focus-visible,
 .action-box:focus-visible,
-.action-target-picker:focus-visible,
+.action-target-button:focus-visible,
 .small-action-button:focus-visible,
 .mode-button:focus-visible,
 .pin-card-button:focus-visible,

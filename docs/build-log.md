@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 15C — selectR Action Grid and Card Visual Cleanup
-**Last completed milestone:** Step 15B — selectR Card Behavior and Layout Cleanup
-**Next task:** Retest the compact selectR action taskbar, target picker, pin icon, and temporary-card replacement behavior in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 15D — selectR Card and Target Polish
+**Last completed milestone:** Step 15C — selectR Action Grid and Card Visual Cleanup
+**Next task:** Retest the compact selectR target buttons, gray pin icon, simplified Open Section cards, and simplified Defined Terms cards in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -1082,6 +1082,54 @@ Notes:
 - Known limitation: manual Word retesting is still needed for the compact grid, target picker, pin button, temporary-card replacement behavior, and per-reference navigation/sidebar behavior.
 - Known limitation: multiple-reference actions use a compact dropdown picker rather than showing every target as a separate always-visible button, to preserve the 2 x 3 taskbar height.
 - Known limitation: clause availability still depends on the existing deterministic clause-like heuristic.
+
+---
+
+### Step 15D — selectR Card and Target Polish
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Make selectR cleaner by replacing dropdown section targets with compact target buttons and simplifying card chrome.
+
+Tasks:
+
+- [x] Replace the red emoji-style pin with a small gray CSS pin icon.
+- [x] Keep accessible pin labels and `aria-pressed` state.
+- [x] Remove the multiple-reference dropdown/menu from Available Actions.
+- [x] Render each detected section, article, schedule, or exhibit target as its own compact button inside the Go/Open action cell.
+- [x] Keep the Available Actions grid compact by using fixed-height target cells with horizontal overflow for many targets.
+- [x] Simplify Open Section cards to the target title and extracted text.
+- [x] Simplify selectR Defined Terms cards to one list with confirmed definitions and candidate no-definition messages.
+- [x] Run local validation.
+- [ ] Retest in Word for Mac with the fake Contractr test agreement.
+- [ ] Commit working cleanup.
+
+Definition of done:
+
+- [x] Multiple detected targets are target-specific without using a dropdown.
+- [x] Open Section cards no longer show matched-heading, approximate-extraction, reference, or explanatory labels.
+- [x] Defined Terms cards no longer split confirmed and candidate terms under separate subtitles.
+- [x] The pin control is small, gray, and still visibly changes when pinned.
+- [ ] Kevin confirms behavior in Word for Mac.
+
+Suggested commit message:
+
+`Simplify selectR action cards and targets`
+
+Notes:
+
+- `apps/word-addin/src/App.tsx` now renders multiple Go/Open section references as compact target buttons such as `Sec. 2.1`, `Art. IV`, `Sch. D`, and `Ex. A`.
+- Single-reference selections still show direct action labels such as `Go Section 2.1` and `Open Schedule D`.
+- The old `selectRTargetChoices` dropdown state and `.action-target-picker` styling were removed.
+- Open Section cards still use the existing deterministic approximate extraction logic internally, but the UI now shows only the section/article/schedule/exhibit title and the extracted text when found.
+- If a target cannot be found, the Open Section card shows the existing failure reason as the card body.
+- Defined Terms cards now render one focused list for the selection: confirmed terms show definitions, and candidates show `May be a defined term, but no definition was found.`
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, real AI provider, document edits, selected-text logging, or full-document logging was added.
+- Known limitation: when a selection contains many references, the target buttons scroll horizontally inside the fixed-height action cell.
+- Known limitation: Open Section extraction remains deterministic and approximate internally, even though the extra warning text is no longer shown in the UI.
+- Known limitation: manual Word retesting is still needed for the pin icon, target buttons, Open Section cards, Defined Terms cards, and existing selectR/analyzR regressions.
 
 ---
 

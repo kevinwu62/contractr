@@ -286,12 +286,24 @@ function getReferenceButtonLabel(reference: SelectRReferenceTarget) {
   return reference.referenceText;
 }
 
-function getReferenceActionLabel(actionLabel: string, reference?: SelectRReferenceTarget) {
-  return reference ? `${actionLabel} ${getReferenceButtonLabel(reference)}` : actionLabel;
+function getReferenceTargetButtonLabel(reference: SelectRReferenceTarget) {
+  const targetText = reference.referenceText
+    .replace(/^(section|article|schedule|exhibit)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const prefixByType: Record<CrossReferenceType, string> = {
+    section: "Sec.",
+    article: "Art.",
+    schedule: "Sch.",
+    exhibit: "Ex.",
+  };
+
+  return `${prefixByType[reference.type]} ${targetText || reference.referenceText}`;
 }
 
-function getReferenceChoiceKey(reference: SelectRReferenceTarget, index: number) {
-  return `${index}:${reference.type}:${reference.referenceText}`;
+function getReferenceActionLabel(actionLabel: string, reference?: SelectRReferenceTarget) {
+  return reference ? `${actionLabel} ${getReferenceButtonLabel(reference)}` : actionLabel;
 }
 
 function createSelectRAction(
@@ -323,7 +335,6 @@ export function App() {
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [currentSelectionError, setCurrentSelectionError] = useState("");
   const [selectRCards, setSelectRCards] = useState<SelectRCard[]>([]);
-  const [selectRTargetChoices, setSelectRTargetChoices] = useState<Partial<Record<SelectRActionGroupId, string>>>({});
   const [hasAnalyzedDefinedTerms, setHasAnalyzedDefinedTerms] = useState(false);
   const [hasAnalyzedCrossReferences, setHasAnalyzedCrossReferences] = useState(false);
   const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
@@ -1016,7 +1027,7 @@ export function App() {
       const card: SelectRSectionReferenceCard = targetResult.found
         ? {
             ...baseCard,
-            title: `${targetResult.target.referenceText} Reference`,
+            title: targetResult.target.referenceText,
             type: "sectionReference",
             result: {
               referenceText: targetResult.target.referenceText,
@@ -1029,7 +1040,7 @@ export function App() {
           }
         : {
             ...baseCard,
-            title: `${reference.referenceText} Reference`,
+            title: reference.referenceText,
             type: "sectionReference",
             result: {
               referenceText: reference.referenceText,
@@ -1194,34 +1205,20 @@ export function App() {
       const hasDefinedTermResults = card.result.confirmedDefinedTerms.length > 0 || card.result.definedTermCandidates.length > 0;
 
       return hasDefinedTermResults ? (
-        <>
-          {card.result.confirmedDefinedTerms.length ? (
-            <div className="selection-detection-group">
-              <p className="definition-label">Defined terms found in selection</p>
-              <ul>
-                {card.result.confirmedDefinedTerms.map((definedTerm) => (
-                  <li key={`${card.id}-${definedTerm.term}-${definedTerm.matchedText}`}>
-                    <strong>{definedTerm.term}</strong>
-                    <span>{definedTerm.definitionText || "Definition was not found in the current analyzR results."}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {card.result.definedTermCandidates.length ? (
-            <div className="selection-detection-group">
-              <p className="definition-label">Potential defined-term candidates</p>
-              <ul>
-                {card.result.definedTermCandidates.map((candidate) => (
-                  <li key={`${card.id}-${candidate.source}-${candidate.term}`}>
-                    <strong>{candidate.term}</strong>
-                    <span>May be a defined term, but no definition was found.</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </>
+        <ul className="selectr-card-result-list">
+          {card.result.confirmedDefinedTerms.map((definedTerm) => (
+            <li key={`${card.id}-${definedTerm.term}-${definedTerm.matchedText}`}>
+              <strong>{definedTerm.term}</strong>
+              <span>{definedTerm.definitionText || "Definition was not found in the current analyzR results."}</span>
+            </li>
+          ))}
+          {card.result.definedTermCandidates.map((candidate) => (
+            <li key={`${card.id}-${candidate.source}-${candidate.term}`}>
+              <strong>{candidate.term}</strong>
+              <span>May be a defined term, but no definition was found.</span>
+            </li>
+          ))}
+        </ul>
       ) : (
         <p className="term-meta">No defined terms or candidates were found in this selection snapshot.</p>
       );
@@ -1311,31 +1308,7 @@ export function App() {
     }
 
     if (card.type === "sectionReference") {
-      return (
-        <>
-          <p className="term-meta">
-            Reference: <strong>{card.result.referenceText}</strong> ({card.result.referenceType})
-          </p>
-          {card.result.headingText ? (
-            <>
-              <p className="definition-label">Matched heading</p>
-              <p className="definition-text">{card.result.headingText}</p>
-            </>
-          ) : null}
-          <p className="mock-label">
-            {card.result.isApproximate
-              ? "Approximate extraction - confirm against the Word document before relying on it."
-              : "Extracted from the current Word document."}
-          </p>
-          <p className="term-meta">{card.result.message}</p>
-          {card.result.extractedText ? (
-            <>
-              <p className="definition-label">Referenced text</p>
-              <p className="definition-text">{card.result.extractedText}</p>
-            </>
-          ) : null}
-        </>
-      );
+      return <p className="definition-text">{card.result.extractedText || card.result.message}</p>;
     }
 
     return <p className="term-meta">{card.result.message}</p>;
@@ -1384,18 +1357,12 @@ export function App() {
                 const isGroupAvailable = group.status !== "unavailable" && group.action;
                 const isDisabled = officeState !== "ready" || activeAction !== null || !isGroupAvailable;
                 const targets = group.targets ?? [];
-                const selectedChoiceKey = selectRTargetChoices[group.id];
-                const selectedTargetIndex = targets.findIndex(
-                  (target, targetIndex) => getReferenceChoiceKey(target, targetIndex) === selectedChoiceKey,
-                );
-                const effectiveTargetIndex = selectedTargetIndex >= 0 ? selectedTargetIndex : 0;
-                const selectedTarget = targets[effectiveTargetIndex];
-                const effectiveChoiceKey = selectedTarget ? getReferenceChoiceKey(selectedTarget, effectiveTargetIndex) : "";
+                const singleTarget = targets.length === 1 ? targets[0] : undefined;
                 const actionLabel =
                   group.id === "goSection"
-                    ? getReferenceActionLabel("Go", selectedTarget)
+                    ? getReferenceActionLabel("Go", singleTarget)
                     : group.id === "openSection"
-                      ? getReferenceActionLabel("Open", selectedTarget)
+                      ? getReferenceActionLabel("Open", singleTarget)
                       : group.label;
 
                 return (
@@ -1404,31 +1371,36 @@ export function App() {
                     key={group.id}
                   >
                     {group.targets && targets.length > 1 ? (
-                      <select
-                        className="action-target-picker"
-                        value={effectiveChoiceKey}
-                        aria-label={`${group.label} target`}
-                        disabled={isDisabled}
-                        onChange={(event) =>
-                          setSelectRTargetChoices((choices) => ({ ...choices, [group.id]: event.target.value }))
-                        }
-                      >
-                        {targets.map((target, targetIndex) => (
-                          <option value={getReferenceChoiceKey(target, targetIndex)} key={getReferenceChoiceKey(target, targetIndex)}>
-                            {getReferenceButtonLabel(target)}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                    {group.targets ? (
+                      <div className="action-target-cell" aria-label={`${group.label} targets`}>
+                        <span className="action-target-cell-label">{group.label}</span>
+                        <div className="action-target-button-row">
+                          {targets.map((target, targetIndex) => (
+                            <button
+                              className="action-target-button"
+                              type="button"
+                              disabled={isDisabled}
+                              title={`${group.label}: ${getReferenceButtonLabel(target)}`}
+                              key={`${targetIndex}-${target.type}-${target.referenceText}`}
+                              onClick={() => {
+                                if (group.action) {
+                                  void handleSelectRAction(group.action, target);
+                                }
+                              }}
+                            >
+                              {getReferenceTargetButtonLabel(target)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : group.targets ? (
                       <button
                         className="action-box"
                         type="button"
                         disabled={isDisabled}
                         title={group.reason}
                         onClick={() => {
-                          if (group.action && selectedTarget) {
-                            void handleSelectRAction(group.action, selectedTarget);
+                          if (group.action && singleTarget) {
+                            void handleSelectRAction(group.action, singleTarget);
                           }
                         }}
                       >
@@ -1473,7 +1445,7 @@ export function App() {
                           title={card.isPinned ? "Unpin card" : "Pin card"}
                           onClick={() => toggleSelectRCardPin(card.id)}
                         >
-                          📌
+                          <span className="pin-card-icon" aria-hidden="true" />
                         </button>
                         <button className="close-card-button" type="button" onClick={() => closeSelectRCard(card.id)}>
                           Close
