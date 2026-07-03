@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MockProvider, type ClauseAnalysisResult } from "@contractr/ai-adapters";
 import {
+  detectKeyClauses,
   extractDefinedTerms,
+  extractContractLayout,
+  extractDocumentStats,
+  extractGoverningLaw,
+  extractKeyDates,
+  extractParties,
   detectSelectionContext,
   extractPotentialObligations,
   findCrossReferenceTarget,
@@ -11,8 +17,14 @@ import {
   findSimilarDefinedTerms,
   type CrossReferenceTarget,
   type CrossReferenceType,
+  type ContractLayout,
   type DefinedTermResult,
+  type DetectedParty,
+  type DocumentStats,
   type FindPotentialUndefinedTermsResult,
+  type GoverningLawResult,
+  type KeyClause,
+  type KeyDate,
   type PotentialObligation,
   type PotentialBrokenReference,
   type SelectionActionId,
@@ -25,6 +37,16 @@ import { readSelectedTextFromWordSelection } from "./wordSelection";
 type OfficeState = "loading" | "ready" | "unavailable";
 type ActiveMode = "selectR" | "analyzR";
 type OutputKind = "selected" | "document" | "definedTerms" | "crossReferences" | "obligations" | "contractAnalysis";
+type AnalysisSubtab =
+  | "parties"
+  | "layout"
+  | "summary"
+  | "dates"
+  | "definedTerms"
+  | "obligations"
+  | "issues"
+  | "keyClauses"
+  | "documentStats";
 type ActiveAction =
   | "readSelected"
   | "readDocument"
@@ -47,6 +69,17 @@ type PotentialIssues = {
 
 type CrossReferenceIssues = {
   potentialBrokenReferences: PotentialBrokenReference[];
+};
+
+type ContractDashboard = {
+  parties: DetectedParty[];
+  layout: ContractLayout;
+  dates: KeyDate[];
+  stats: DocumentStats;
+  governingLaw: GoverningLawResult;
+  keyClauses: KeyClause[];
+  mockSummary: ClauseAnalysisResult;
+  analyzedAt: string;
 };
 
 type SelectRCardBase = {
@@ -152,6 +185,18 @@ const emptyPotentialIssues: PotentialIssues = {
 const emptyCrossReferenceIssues: CrossReferenceIssues = {
   potentialBrokenReferences: [],
 };
+
+const analysisSubtabs: Array<{ id: AnalysisSubtab; label: string }> = [
+  { id: "parties", label: "Parties" },
+  { id: "layout", label: "Layout" },
+  { id: "summary", label: "Summary" },
+  { id: "dates", label: "Dates" },
+  { id: "definedTerms", label: "Defined Terms" },
+  { id: "obligations", label: "Obligations" },
+  { id: "issues", label: "Issues" },
+  { id: "keyClauses", label: "Key Clauses" },
+  { id: "documentStats", label: "Document Stats" },
+];
 
 function uniqueNonEmptyTexts(values: string[]) {
   return Array.from(new Set(values.map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean)));
@@ -331,6 +376,8 @@ export function App() {
   const [potentialIssues, setPotentialIssues] = useState<PotentialIssues>(emptyPotentialIssues);
   const [crossReferenceIssues, setCrossReferenceIssues] = useState<CrossReferenceIssues>(emptyCrossReferenceIssues);
   const [potentialObligations, setPotentialObligations] = useState<PotentialObligation[]>([]);
+  const [contractDashboard, setContractDashboard] = useState<ContractDashboard | null>(null);
+  const [activeAnalysisSubtab, setActiveAnalysisSubtab] = useState<AnalysisSubtab>("parties");
   const [currentSelectionText, setCurrentSelectionText] = useState("");
   const [selectionVersion, setSelectionVersion] = useState(0);
   const [currentSelectionError, setCurrentSelectionError] = useState("");
@@ -340,6 +387,7 @@ export function App() {
   const [hasAnalyzedObligations, setHasAnalyzedObligations] = useState(false);
   const [message, setMessage] = useState("Select text in Word, then click the button.");
   const isSelectionRefreshRunningRef = useRef(false);
+  const hasAutoRunContractAnalysisRef = useRef(false);
   const selectRCardCounterRef = useRef(0);
 
   useEffect(() => {
@@ -485,17 +533,27 @@ export function App() {
     setPotentialIssues(emptyPotentialIssues);
     setCrossReferenceIssues(emptyCrossReferenceIssues);
     setPotentialObligations([]);
+    setContractDashboard(null);
     setHasAnalyzedDefinedTerms(false);
     setHasAnalyzedCrossReferences(false);
     setHasAnalyzedObligations(false);
   }
+
+  useEffect(() => {
+    if (officeState !== "ready" || hasAutoRunContractAnalysisRef.current) {
+      return;
+    }
+
+    hasAutoRunContractAnalysisRef.current = true;
+    void runContractAnalysis("auto");
+  }, [officeState]);
 
   function canStartAction() {
     return officeState === "ready" && activeAction === null;
   }
 
   function isActionButtonDisabled(action: ActiveAction) {
-    return officeState !== "ready" || activeAction === action;
+    return officeState !== "ready" || activeAction !== null;
   }
 
   function getButtonLabel(action: ActiveAction, idleLabel: string) {
@@ -720,12 +778,25 @@ export function App() {
     }
   }
 
-  async function analyzeContract() {
+  function getMockAnalysisText(documentText: string, layout: ContractLayout, parties: DetectedParty[]) {
+    const titleLine = layout.title ? `Title: ${layout.title}` : "Title: Not detected";
+    const partiesLine = parties.length
+      ? `Parties: ${parties.map((party) => `${party.name}${party.role ? ` (${party.role})` : ""}`).join("; ")}`
+      : "Parties: Not detected";
+    const excerpt = documentText.replace(/\s+/g, " ").trim().slice(0, 1200);
+
+    return [titleLine, partiesLine, `Excerpt for mock-only summary: ${excerpt || "No document text detected."}`].join("\n");
+  }
+
+  async function runContractAnalysis(source: "auto" | "manual") {
     if (!canStartAction()) {
       return;
     }
 
     setActiveAction("analyzeContract");
+    setOutputKind("contractAnalysis");
+    setOutputText("");
+    setMessage(source === "auto" ? "Contractr is analyzing the current document..." : "Refreshing contract analysis...");
 
     try {
       const text = await readDocumentText();
@@ -739,6 +810,16 @@ export function App() {
         potentialBrokenReferences: findPotentialBrokenReferences(text),
       };
       const obligationResults = extractPotentialObligations(text);
+      const parties = extractParties(text);
+      const layout = extractContractLayout(text);
+      const dates = extractKeyDates(text);
+      const stats = extractDocumentStats(text);
+      const governingLaw = extractGoverningLaw(text);
+      const keyClauses = detectKeyClauses(text);
+      const mockSummary = await aiProvider.summarizeClause({
+        selectedText: getMockAnalysisText(text, layout, parties),
+        sourceReference: "analyzR mock contract summary",
+      });
 
       setOutputKind("contractAnalysis");
       setOutputText("");
@@ -747,6 +828,16 @@ export function App() {
       setPotentialIssues(issues);
       setCrossReferenceIssues(referenceIssues);
       setPotentialObligations(obligationResults);
+      setContractDashboard({
+        parties,
+        layout,
+        dates,
+        stats,
+        governingLaw,
+        keyClauses,
+        mockSummary,
+        analyzedAt: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+      });
       setHasAnalyzedDefinedTerms(true);
       setHasAnalyzedCrossReferences(true);
       setHasAnalyzedObligations(true);
@@ -766,6 +857,7 @@ export function App() {
       setPotentialIssues(emptyPotentialIssues);
       setCrossReferenceIssues(emptyCrossReferenceIssues);
       setPotentialObligations([]);
+      setContractDashboard(null);
       setHasAnalyzedDefinedTerms(false);
       setHasAnalyzedCrossReferences(false);
       setHasAnalyzedObligations(false);
@@ -773,6 +865,10 @@ export function App() {
     } finally {
       clearActiveAction("analyzeContract");
     }
+  }
+
+  async function analyzeContract() {
+    await runContractAnalysis("manual");
   }
 
   function createBaseSelectRCard(
@@ -1190,16 +1286,6 @@ export function App() {
     currentSelectionContext.definedTermCandidates.length > 0 ||
     currentSelectionContext.obligationSignals.length > 0 ||
     currentSelectionContext.isClauseLike;
-  const shouldShowDocumentAnalysis =
-    activeMode === "analyzR" &&
-    (outputKind === "definedTerms" ||
-    outputKind === "crossReferences" ||
-    outputKind === "obligations" ||
-    outputKind === "contractAnalysis" ||
-    hasAnalyzedDefinedTerms ||
-    hasAnalyzedCrossReferences ||
-    hasAnalyzedObligations);
-
   function renderSelectRCardResult(card: SelectRCard) {
     if (card.type === "definedTerms") {
       const hasDefinedTermResults = card.result.confirmedDefinedTerms.length > 0 || card.result.definedTermCandidates.length > 0;
@@ -1308,10 +1394,363 @@ export function App() {
     }
 
     if (card.type === "sectionReference") {
-      return <p className="definition-text">{card.result.extractedText || card.result.message}</p>;
+      if (!card.result.extractedText) {
+        return <p className="term-meta">{card.result.message}</p>;
+      }
+
+      return (
+        <div className="section-preview-card">
+          <p className="term-meta section-preview-text">{card.result.extractedText}</p>
+        </div>
+      );
     }
 
     return <p className="term-meta">{card.result.message}</p>;
+  }
+
+  function renderAnalysisSubtab() {
+    if (!contractDashboard) {
+      return activeAction === "analyzeContract" ? (
+        <p className="term-meta">Analyzing the current Word document...</p>
+      ) : (
+        <p className="term-meta">Contract analysis has not run yet.</p>
+      );
+    }
+
+    if (activeAnalysisSubtab === "parties") {
+      return contractDashboard.parties.length ? (
+        <ol className="defined-term-list">
+          {contractDashboard.parties.map((party) => (
+            <li className="defined-term-item" key={`${party.name}-${party.role ?? "unknown"}`}>
+              <h2>{party.name}</h2>
+              <p className="term-meta">
+                Role: <strong>{party.role ?? "Not detected"}</strong>
+              </p>
+              <p className="term-meta">
+                Confidence: <strong>{party.confidenceLabel}</strong>
+              </p>
+              <p className="definition-label">Source snippet</p>
+              <p className="definition-text">{party.sourceText}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="term-meta">No likely parties were detected using the current deterministic patterns.</p>
+      );
+    }
+
+    if (activeAnalysisSubtab === "layout") {
+      const articleSectionHeadings = contractDashboard.layout.headings.filter(
+        (heading) => heading.type === "article" || heading.type === "section",
+      );
+      const scheduleExhibitHeadings = contractDashboard.layout.headings.filter(
+        (heading) => heading.type === "schedule" || heading.type === "exhibit",
+      );
+
+      return (
+        <div className="analysis-tab-panel">
+          <p className="term-meta">
+            Title: <strong>{contractDashboard.layout.title ?? "Not detected"}</strong>
+          </p>
+          {articleSectionHeadings.length ? (
+            <div className="issue-group">
+              <h3>Articles and Sections</h3>
+              <ul>
+                {articleSectionHeadings.map((heading) => (
+                  <li key={`${heading.normalizedTarget}-${heading.headingText}`}>
+                    <strong>{heading.headingText}</strong>
+                    <span>{heading.type}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="term-meta">No article or section headings were detected.</p>
+          )}
+          {scheduleExhibitHeadings.length ? (
+            <div className="issue-group">
+              <h3>Schedules and Exhibits</h3>
+              <ul>
+                {scheduleExhibitHeadings.map((heading) => (
+                  <li key={`${heading.normalizedTarget}-${heading.headingText}`}>
+                    <strong>{heading.headingText}</strong>
+                    <span>{heading.type}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {contractDashboard.layout.otherHeadings.length ? (
+            <div className="issue-group">
+              <h3>Other Potential Headings</h3>
+              <ul>
+                {contractDashboard.layout.otherHeadings.map((heading) => (
+                  <li key={heading}>{heading}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (activeAnalysisSubtab === "summary") {
+      return (
+        <div className="analysis-tab-panel">
+          <p className="mock-label">Mock output only - no real AI provider was called.</p>
+          <p className="definition-label">Mock summary</p>
+          <p className="definition-text">{contractDashboard.mockSummary.summary}</p>
+          <p className="definition-label">Mock explanation</p>
+          <p className="definition-text">{contractDashboard.mockSummary.explanation}</p>
+          <div className="issue-group">
+            <h3>Future summary scope</h3>
+            <ul>
+              {contractDashboard.mockSummary.reviewPoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeAnalysisSubtab === "dates") {
+      return contractDashboard.dates.length ? (
+        <ol className="defined-term-list">
+          {contractDashboard.dates.map((date, index) => (
+            <li className="defined-term-item" key={`${date.label}-${date.value}-${index}`}>
+              <h2>{date.label}</h2>
+              <p className="term-meta">
+                {date.isPotential ? "Potential timing" : "Detected date"}: <strong>{date.value}</strong>
+              </p>
+              <p className="definition-label">Source snippet</p>
+              <p className="definition-text">{date.sourceText}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="term-meta">No dates, deadlines, or timing references were detected using the current patterns.</p>
+      );
+    }
+
+    if (activeAnalysisSubtab === "definedTerms") {
+      return definedTerms.length ? (
+        <ol className="defined-term-list">
+          {definedTerms.map((result) => (
+            <li className="defined-term-item" key={result.term}>
+              <h2>
+                <button
+                  className="link-button defined-term-link"
+                  type="button"
+                  disabled={activeAction === "navigate"}
+                  onClick={() => navigateToDocumentText(getDefinitionNavigationTarget(result))}
+                >
+                  {result.term}
+                </button>
+              </h2>
+              <p className="term-meta">
+                {result.confidenceLabel}: <strong>{result.patternLabel}</strong>
+              </p>
+              {result.detectedVariants.length > 1 ? (
+                <p className="term-meta">
+                  Detected variants: <strong>{result.detectedVariants.join(", ")}</strong>
+                </p>
+              ) : null}
+              <p className="term-meta">
+                Potential usage count: <strong>{result.usageCount.toLocaleString()}</strong>
+              </p>
+              {result.usageCount > 0 ? (
+                <button
+                  className="small-action-button"
+                  type="button"
+                  disabled={activeAction === "navigate"}
+                  onClick={() => navigateToDocumentText(getUsageNavigationTarget(result))}
+                >
+                  Jump to first usage
+                </button>
+              ) : null}
+              <p className="definition-label">Likely source paragraph</p>
+              <p className="definition-text">{result.definitionText}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="term-meta">No likely defined terms were found using the current deterministic patterns.</p>
+      );
+    }
+
+    if (activeAnalysisSubtab === "obligations") {
+      return potentialObligations.length ? (
+        <ol className="defined-term-list">
+          {potentialObligations.map((obligation, index) => (
+            <li className="defined-term-item" key={`${obligation.obligationText}-${index}`}>
+              <h2>
+                <button
+                  className="link-button defined-term-link"
+                  type="button"
+                  disabled={activeAction === "navigate"}
+                  onClick={() => navigateToDocumentText(getTermNavigationTarget(obligation.sourceNavigationText))}
+                >
+                  {obligation.responsibleParty ?? "Possible responsible party not detected"}
+                </button>
+              </h2>
+              <p className="term-meta">
+                Trigger: <strong>{obligation.triggerText}</strong>
+              </p>
+              {obligation.sourceReference ? (
+                <p className="term-meta">
+                  Source: <strong>{obligation.sourceReference}</strong>
+                </p>
+              ) : null}
+              {obligation.deadlineOrTiming ? (
+                <p className="term-meta">
+                  Timing: <strong>{obligation.deadlineOrTiming}</strong>
+                </p>
+              ) : null}
+              <p className="definition-label">Potential obligation text</p>
+              <p className="definition-text">{obligation.obligationText}</p>
+              <p className="definition-label">Source snippet</p>
+              <p className="definition-text">{obligation.sourceText}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="term-meta">No potential obligations were found using the current deterministic patterns.</p>
+      );
+    }
+
+    if (activeAnalysisSubtab === "issues") {
+      return issueCount || crossReferenceIssueCount ? (
+        <div className="analysis-tab-panel">
+          {crossReferenceIssues.potentialBrokenReferences.length ? (
+            <div className="issue-group">
+              <h3>Potential Broken References</h3>
+              <ul>
+                {crossReferenceIssues.potentialBrokenReferences.map((issue, index) => (
+                  <li key={`${issue.referenceText}-${index}`}>
+                    <button
+                      className="link-button issue-link"
+                      type="button"
+                      onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.sourceNavigationText))}
+                    >
+                      {issue.referenceText}
+                    </button>
+                    <span>
+                      {issue.reason} Source: {issue.sourceText}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {potentialIssues.definedButUnusedTerms.length ? (
+            <div className="issue-group">
+              <h3>Defined but unused</h3>
+              <ul>
+                {potentialIssues.definedButUnusedTerms.map((issue) => (
+                  <li key={issue.term}>
+                    <button
+                      className="link-button issue-link"
+                      type="button"
+                      onClick={() => navigateToDocumentText(getDefinitionNavigationTarget(issue))}
+                    >
+                      {issue.term}
+                    </button>
+                    <span>Potentially no meaningful usage outside its own definition.</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {potentialIssues.potentialUndefinedTerms.length ? (
+            <div className="issue-group">
+              <h3>Potentially undefined</h3>
+              <ul>
+                {potentialIssues.potentialUndefinedTerms.map((issue) => (
+                  <li key={issue.term}>
+                    <button
+                      className="link-button issue-link"
+                      type="button"
+                      onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.term))}
+                    >
+                      {issue.term}
+                    </button>
+                    <span>
+                      {issue.usageCount.toLocaleString()} appearances. {issue.reason}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {potentialIssues.similarDefinedTerms.length ? (
+            <div className="issue-group">
+              <h3>Similar-looking terms</h3>
+              <ul>
+                {potentialIssues.similarDefinedTerms.map((issue) => (
+                  <li key={`${issue.firstTerm}-${issue.secondTerm}`}>
+                    <button
+                      className="link-button issue-link"
+                      type="button"
+                      onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.firstTerm))}
+                    >
+                      {issue.firstTerm} / {issue.secondTerm}
+                    </button>
+                    <span>{issue.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="term-meta">No potential issues were found using the current deterministic checks.</p>
+      );
+    }
+
+    if (activeAnalysisSubtab === "keyClauses") {
+      return contractDashboard.keyClauses.length ? (
+        <ul className="snapshot-list">
+          {contractDashboard.keyClauses.map((clause) => (
+            <li key={`${clause.label}-${clause.headingText}`}>
+              <strong>{clause.label}</strong>
+              <span>{clause.headingText}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="term-meta">No common key clause headings were detected.</p>
+      );
+    }
+
+    return (
+      <ul className="snapshot-list">
+        <li>
+          <strong>Words</strong>
+          <span>{contractDashboard.stats.wordCount.toLocaleString()}</span>
+        </li>
+        <li>
+          <strong>Paragraphs</strong>
+          <span>{contractDashboard.stats.paragraphCount.toLocaleString()}</span>
+        </li>
+        <li>
+          <strong>Articles</strong>
+          <span>{contractDashboard.stats.articleCount.toLocaleString()}</span>
+        </li>
+        <li>
+          <strong>Sections</strong>
+          <span>{contractDashboard.stats.sectionCount.toLocaleString()}</span>
+        </li>
+        <li>
+          <strong>Schedules</strong>
+          <span>{contractDashboard.stats.scheduleCount.toLocaleString()}</span>
+        </li>
+        <li>
+          <strong>Exhibits</strong>
+          <span>{contractDashboard.stats.exhibitCount.toLocaleString()}</span>
+        </li>
+      </ul>
+    );
   }
 
   return (
@@ -1537,221 +1976,100 @@ export function App() {
       ) : (
         <section className="tool-group" aria-labelledby="analyzr-heading">
           <h2 id="analyzr-heading">analyzR</h2>
-          <p className="mode-description">analyzR tools read the current Word document for deterministic analysis.</p>
-          <button className="primary-button" disabled={isActionButtonDisabled("analyzeContract")} onClick={analyzeContract}>
-            {getButtonLabel("analyzeContract", "Analyze Contract")}
-          </button>
-        </section>
-      )}
-
-      {activeMode === "analyzR" ? (
-        <section className="output" aria-live="polite">
-          <p className="status">{message}</p>
-          {(outputKind === "document" ||
-            outputKind === "definedTerms" ||
-            outputKind === "crossReferences" ||
-            outputKind === "obligations" ||
-            outputKind === "contractAnalysis") &&
-          characterCount !== null ? (
-            <p className="count">{characterCount.toLocaleString()} characters</p>
-          ) : null}
-          {shouldShowDocumentAnalysis ? (
-          <section className="contract-analysis-results" aria-labelledby="contract-analysis-results-heading">
-            <h2 id="contract-analysis-results-heading">Contract Analysis Results</h2>
-            <p className="term-meta">Deterministic local analysis only. No real AI provider was called.</p>
-            <section className="potential-issues" aria-labelledby="potential-obligations-heading">
-              <h2 id="potential-obligations-heading">Potential Obligations</h2>
-              {!hasAnalyzedObligations ? (
-                <p className="term-meta">Click Analyze Contract to check likely duties and timing requirements.</p>
-              ) : potentialObligations.length ? (
-                <ol className="defined-term-list">
-                  {potentialObligations.map((obligation, index) => (
-                    <li className="defined-term-item" key={`${obligation.obligationText}-${index}`}>
-                      <h2>
-                        <button
-                          className="link-button defined-term-link"
-                          type="button"
-                          disabled={activeAction === "navigate"}
-                          onClick={() => navigateToDocumentText(getTermNavigationTarget(obligation.sourceNavigationText))}
-                        >
-                          {obligation.responsibleParty ?? "Possible responsible party not detected"}
-                        </button>
-                      </h2>
-                      <p className="term-meta">
-                        Trigger: <strong>{obligation.triggerText}</strong>
-                      </p>
-                      {obligation.sourceReference ? (
-                        <p className="term-meta">
-                          Source: <strong>{obligation.sourceReference}</strong>
-                        </p>
-                      ) : null}
-                      {obligation.deadlineOrTiming ? (
-                        <p className="term-meta">
-                          Timing: <strong>{obligation.deadlineOrTiming}</strong>
-                        </p>
-                      ) : null}
-                      <p className="definition-label">Potential obligation text</p>
-                      <p className="definition-text">{obligation.obligationText}</p>
-                      <p className="definition-label">Source snippet</p>
-                      <p className="definition-text">{obligation.sourceText}</p>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="term-meta">No potential obligations were found using the current deterministic patterns.</p>
-              )}
-            </section>
-            <section className="potential-issues" aria-labelledby="cross-reference-issues-heading">
-              <h2 id="cross-reference-issues-heading">Cross-Reference Issues</h2>
-              {!hasAnalyzedCrossReferences ? (
-                <p className="term-meta">Click Analyze Contract to check section and schedule references.</p>
-              ) : crossReferenceIssueCount ? (
-                <div className="issue-group">
-                  <h3>Potential Broken References</h3>
-                  <ul>
-                    {crossReferenceIssues.potentialBrokenReferences.map((issue, index) => (
-                      <li key={`${issue.referenceText}-${index}`}>
-                        <button
-                          className="link-button issue-link"
-                          type="button"
-                          onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.sourceNavigationText))}
-                        >
-                          {issue.referenceText}
-                        </button>
-                        <span>
-                          {issue.reason} Source: {issue.sourceText}
-                        </span>
+          <p className="mode-description">analyzR automatically reads the current Word document for local analysis.</p>
+          <div className="analyzr-control-row">
+            <button className="refresh-analysis-button" type="button" disabled={isActionButtonDisabled("analyzeContract")} onClick={analyzeContract}>
+              {getButtonLabel("analyzeContract", "Refresh")}
+            </button>
+            {contractDashboard?.analyzedAt ? <span>Updated {contractDashboard.analyzedAt}</span> : null}
+          </div>
+          <section className="contract-snapshot" aria-labelledby="contract-snapshot-heading">
+            <h3 id="contract-snapshot-heading">Contract Snapshot</h3>
+            <div className="snapshot-grid">
+              <section>
+                <h4>Parties</h4>
+                {contractDashboard?.parties.length ? (
+                  <ul className="snapshot-list">
+                    {contractDashboard.parties.slice(0, 4).map((party) => (
+                      <li key={`${party.name}-${party.role ?? "unknown"}`}>
+                        <strong>{party.name}</strong>
+                        <span>{party.role ?? "Role not detected"}</span>
                       </li>
                     ))}
                   </ul>
-                </div>
-              ) : (
-                <p className="term-meta">No potential broken cross-references found using the current deterministic checks.</p>
-              )}
-            </section>
-            <section className="potential-issues" aria-labelledby="potential-issues-heading">
-              <h2 id="potential-issues-heading">Potential Issues</h2>
-              {!hasAnalyzedDefinedTerms ? (
-                <p className="term-meta">Click Analyze Contract to check defined-term issues.</p>
-              ) : issueCount ? (
-                <>
-                  {potentialIssues.definedButUnusedTerms.length ? (
-                    <div className="issue-group">
-                      <h3>Defined but unused</h3>
-                      <ul>
-                        {potentialIssues.definedButUnusedTerms.map((issue) => (
-                          <li key={issue.term}>
-                            <button
-                              className="link-button issue-link"
-                              type="button"
-                              onClick={() => navigateToDocumentText(getDefinitionNavigationTarget(issue))}
-                            >
-                              {issue.term}
-                            </button>
-                            <span>Potentially no meaningful usage outside its own definition.</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {potentialIssues.potentialUndefinedTerms.length ? (
-                    <div className="issue-group">
-                      <h3>Potentially undefined</h3>
-                      <ul>
-                        {potentialIssues.potentialUndefinedTerms.map((issue) => (
-                          <li key={issue.term}>
-                            <button
-                              className="link-button issue-link"
-                              type="button"
-                              onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.term))}
-                            >
-                              {issue.term}
-                            </button>
-                            <span>
-                              {issue.usageCount.toLocaleString()} appearances. {issue.reason}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {potentialIssues.similarDefinedTerms.length ? (
-                    <div className="issue-group">
-                      <h3>Similar-looking terms</h3>
-                      <ul>
-                        {potentialIssues.similarDefinedTerms.map((issue) => (
-                          <li key={`${issue.firstTerm}-${issue.secondTerm}`}>
-                            <button
-                              className="link-button issue-link"
-                              type="button"
-                              onClick={() => navigateToDocumentText(getTermNavigationTarget(issue.firstTerm))}
-                            >
-                              {issue.firstTerm} / {issue.secondTerm}
-                            </button>
-                            <span>{issue.reason}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </>
-              ) : (
-                <p className="term-meta">No potential defined-term issues found using the current deterministic checks.</p>
-              )}
-            </section>
-            <section aria-labelledby="defined-terms-heading">
-              <h2 id="defined-terms-heading">Defined Terms</h2>
-              {!hasAnalyzedDefinedTerms ? (
-                <p className="term-meta">Click Analyze Contract to list likely defined terms.</p>
-              ) : definedTerms.length ? (
-                <ol className="defined-term-list">
-                  {definedTerms.map((result) => (
-                    <li className="defined-term-item" key={result.term}>
-                      <h2>
-                        <button
-                          className="link-button defined-term-link"
-                          type="button"
-                          disabled={activeAction === "navigate"}
-                          onClick={() => navigateToDocumentText(getDefinitionNavigationTarget(result))}
-                        >
-                          {result.term}
-                        </button>
-                      </h2>
-                      <p className="term-meta">
-                        {result.confidenceLabel}: <strong>{result.patternLabel}</strong>
-                      </p>
-                      {result.detectedVariants.length > 1 ? (
-                        <p className="term-meta">
-                          Detected variants: <strong>{result.detectedVariants.join(", ")}</strong>
-                        </p>
-                      ) : null}
-                      <p className="term-meta">
-                        Potential usage count: <strong>{result.usageCount.toLocaleString()}</strong>
-                      </p>
-                      {result.usageCount > 0 ? (
-                        <button
-                          className="small-action-button"
-                          type="button"
-                          disabled={activeAction === "navigate"}
-                          onClick={() => navigateToDocumentText(getUsageNavigationTarget(result))}
-                        >
-                          Jump to first usage
-                        </button>
-                      ) : null}
-                      <p className="definition-label">Likely source paragraph</p>
-                      <p className="definition-text">{result.definitionText}</p>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="term-meta">No likely defined terms were found using the current deterministic patterns.</p>
-              )}
-            </section>
+                ) : (
+                  <p className="term-meta">Not detected</p>
+                )}
+              </section>
+              <section>
+                <h4>Contract Nature</h4>
+                <p className="term-meta">
+                  {contractDashboard ? contractDashboard.mockSummary.summary : "Mock-only summary pending."}
+                </p>
+              </section>
+              <section>
+                <h4>Contract Elements</h4>
+                <ul className="snapshot-list compact-snapshot-list">
+                  <li>
+                    <strong>Articles</strong>
+                    <span>{contractDashboard?.stats.articleCount.toLocaleString() ?? "0"}</span>
+                  </li>
+                  <li>
+                    <strong>Sections</strong>
+                    <span>{contractDashboard?.stats.sectionCount.toLocaleString() ?? "0"}</span>
+                  </li>
+                  <li>
+                    <strong>Schedules</strong>
+                    <span>{contractDashboard?.stats.scheduleCount.toLocaleString() ?? "0"}</span>
+                  </li>
+                  <li>
+                    <strong>Exhibits</strong>
+                    <span>{contractDashboard?.stats.exhibitCount.toLocaleString() ?? "0"}</span>
+                  </li>
+                  <li>
+                    <strong>Defined terms</strong>
+                    <span>{definedTerms.length.toLocaleString()}</span>
+                  </li>
+                  <li>
+                    <strong>Obligations</strong>
+                    <span>{potentialObligations.length.toLocaleString()}</span>
+                  </li>
+                  <li>
+                    <strong>Potential issues</strong>
+                    <span>{(issueCount + crossReferenceIssueCount).toLocaleString()}</span>
+                  </li>
+                </ul>
+              </section>
+              <section>
+                <h4>Governing Law</h4>
+                <p className="term-meta">{contractDashboard?.governingLaw.governingLaw ?? "Not detected"}</p>
+              </section>
+            </div>
           </section>
-          ) : null}
-          {outputText ? <pre>{outputText}</pre> : null}
+          <section className="analysis-tabs" aria-labelledby="analysis-tabs-heading">
+            <h3 id="analysis-tabs-heading">Analysis Details</h3>
+            <div className="analysis-tab-list" role="tablist" aria-label="analyzR detail tabs">
+              {analysisSubtabs.map((tab) => (
+                <button
+                  className={`analysis-tab-button${activeAnalysisSubtab === tab.id ? " analysis-tab-button-active" : ""}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeAnalysisSubtab === tab.id}
+                  key={tab.id}
+                  onClick={() => setActiveAnalysisSubtab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="analysis-tab-content" role="tabpanel">
+              {renderAnalysisSubtab()}
+            </div>
+          </section>
+          <p className="status">{message}</p>
+          {characterCount !== null ? <p className="count">{characterCount.toLocaleString()} characters</p> : null}
         </section>
-      ) : null}
+      )}
     </main>
   );
 }

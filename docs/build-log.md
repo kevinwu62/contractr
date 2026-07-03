@@ -6,9 +6,9 @@ Purpose: track Contractr’s build progress, milestone status, next tasks, block
 
 ## Current Status
 
-**Current milestone:** Step 15D — selectR Card and Target Polish
-**Last completed milestone:** Step 15C — selectR Action Grid and Card Visual Cleanup
-**Next task:** Retest the compact selectR target buttons, gray pin icon, simplified Open Section cards, and simplified Defined Terms cards in Word for Mac with the fake Contractr test agreement.
+**Current milestone:** Step 15F — Read-only Open Section Cards
+**Last completed milestone:** Step 15F — Read-only Open Section Cards
+**Next task:** Retest Open Section cards and selectR/analyzR regressions in Word for Mac with the fake Contractr test agreement.
 
 ---
 
@@ -1130,6 +1130,113 @@ Notes:
 - Known limitation: when a selection contains many references, the target buttons scroll horizontally inside the fixed-height action cell.
 - Known limitation: Open Section extraction remains deterministic and approximate internally, even though the extra warning text is no longer shown in the UI.
 - Known limitation: manual Word retesting is still needed for the pin icon, target buttons, Open Section cards, Defined Terms cards, and existing selectR/analyzR regressions.
+
+---
+
+### Step 15E — Editable Open Section Cards
+
+**Status:** Removed before release.
+
+Goal:
+
+Make selectR Open Section cards editable and add a safe first version of applying plain-text edits back to the Word document.
+
+Tasks:
+
+- [x] Investigate whether Open Section cards store a durable Word range.
+- [x] Confirm current cards store extracted plain text and metadata, not a live Word range.
+- [x] Make Open Section card text editable in the sidebar.
+- [x] Add an explicit `Apply Edits` button.
+- [x] Add a concise experimental warning for formatting and hyperlink limitations.
+- [x] Re-find the target heading in Word before applying edits.
+- [x] Refuse to apply if the original section text no longer exactly matches the card snapshot.
+- [x] Preserve paragraph breaks as plain text where possible.
+- [x] Show success or error status inside the card.
+- [x] Run local validation.
+- [ ] Retest in Word for Mac with the fake Contractr test agreement.
+- [ ] Commit working feature.
+
+Definition of done:
+
+- [x] Open Section cards show an editable text area.
+- [x] Edits apply only after the user clicks `Apply Edits`.
+- [x] Contractr refuses stale or ambiguous edits instead of modifying the wrong section.
+- [x] The UI clearly says this is experimental plain-text replacement.
+- [ ] Kevin confirms basic edit, stale-card safety, formatting warning, and selectR/analyzR regressions in Word.
+
+Suggested commit message:
+
+`Add editable section cards`
+
+Notes:
+
+- Sidebar section editing was removed in Step 15F because applying edits from the task pane can damage Word formatting, hyperlinks, comments, tracked changes, tables, or other document structure.
+- The safer product direction is to use Contractr for navigation, preview, and analysis, then edit formatted contract text directly in Word.
+- `apps/word-addin/src/App.tsx` now stores `originalExtractedText` and `editableText` for Open Section cards.
+- Apply Edits is a plain-text replacement flow. It does not promise to preserve complex formatting, hyperlinks, comments, tracked changes, tables, or inline styling.
+- The card warning says: `Experimental: Apply Edits replaces section text and may not preserve complex formatting or hyperlinks. Use only on simple test documents for now.`
+- Apply Edits re-reads Word paragraphs, finds the single paragraph whose first line matches the stored heading text, collects paragraphs until the next likely section/article/schedule/exhibit heading, and compares that current section text to the original card snapshot.
+- If the heading is missing, duplicated, truncated, or the current section text differs from the original snapshot, no document change is made and the card shows an error.
+- If the edited text is empty, no document change is made.
+- If the guard passes, Contractr replaces the located heading-and-body range with the edited plain text using Office.js `insertText(..., replace)`.
+- After a successful apply, the card treats the edited text as its new baseline so another explicit Apply Edits can be attempted from the same card.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, real AI provider, selected-text logging, or full-document logging was added.
+- Validation passed in `apps/word-addin`: `npm run typecheck`, `npm run build`, and `xmllint --noout manifest.xml`.
+- Validation passed in `packages/ai-adapters` using the add-in TypeScript binary: `../../apps/word-addin/node_modules/.bin/tsc --noEmit`.
+- `packages/contract-core` has no `typecheck` script or `tsconfig.json`, so direct package typecheck is not currently available.
+- Known limitation: this first version is for simple dummy documents only. Do not use it on workplace/confidential contracts.
+- Known limitation: section re-finding depends on deterministic heading detection and exact plain-text snapshot comparison.
+- Known limitation: paragraph breaks are preserved as plain text, but richer Word formatting is not reliably preserved.
+- Known limitation: manual Word retesting is still needed for basic edit, stale-card safety, formatting behavior, and existing selectR/analyzR regressions.
+
+---
+
+### Step 15F — Read-only Open Section Cards
+
+**Status:** Implemented locally — Word for Mac manual retest still needed.
+
+Goal:
+
+Remove sidebar section editing and return Open Section cards to read-only previews.
+
+Tasks:
+
+- [x] Remove editable Open Section textarea UI.
+- [x] Remove `Apply Edits` button and apply status UI.
+- [x] Remove editable section card state and handlers.
+- [x] Remove the Office.js section replacement helper path.
+- [x] Keep Open Section preview cards, Pin, and Close behavior.
+- [x] Keep Go/Open section reference detection and target-specific buttons.
+- [x] Remove the temporary formatted-edit note from Open Section cards.
+- [x] Run local validation.
+- [ ] Retest in Word for Mac with the fake Contractr test agreement.
+- [ ] Commit working change.
+
+Definition of done:
+
+- [x] Open Section cards show section/article/schedule/exhibit title and read-only extracted text.
+- [x] There is no editable textbox or rich editor in Open Section cards.
+- [x] There is no `Apply Edits` button or status.
+- [x] Open Section cards do not modify the Word document.
+- [ ] Kevin confirms Open Section, Go section, action cards, selectR/analyzR switching, and Analyze Contract still work in Word.
+
+Suggested commit message:
+
+`Remove sidebar section editing`
+
+Notes:
+
+- `apps/word-addin/src/App.tsx` no longer stores `editableText`, `originalExtractedText`, or `applyStatus` on Open Section cards.
+- Removed `updateSectionCardEditableText`, `updateSectionCardApplyStatus`, and `applySectionCardEdits`.
+- Removed the Office.js document modification path that used paragraph ranges and `insertText(..., Word.InsertLocation.replace)`.
+- Open Section cards now render only the title, read-only preview text with preserved line breaks, and Pin/Close controls.
+- Section extraction remains deterministic and local. The extracted text is used only for sidebar preview, not for document edits.
+- No OpenAI, Copilot, Claude, Gemini, Ollama, Azure OpenAI, backend, database, authentication, Next.js, API keys, `.env`, real AI provider, selected-text logging, full-document logging, or sidebar document editing was added.
+- Validation passed in `apps/word-addin`: `npm run typecheck`, `npm run build`, and `xmllint --noout manifest.xml`.
+- Validation passed in `packages/ai-adapters` using the add-in TypeScript binary: `../../apps/word-addin/node_modules/.bin/tsc --noEmit`.
+- `packages/contract-core` has no `typecheck` script or `tsconfig.json`, so direct package typecheck is not currently available.
+- Known limitation: Open Section extraction is still approximate and best used as a preview/navigation aid.
+- Known limitation: manual Word retesting is still needed for Open Section cards and existing selectR/analyzR regressions.
 
 ---
 

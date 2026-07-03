@@ -358,6 +358,16 @@ h1 {
   font-size: 0.92rem;
 }
 
+.section-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-preview-text {
+  white-space: pre-wrap;
+}
+
 .pin-card-button,
 .close-card-button {
   border: 1px solid #b8c4d0;
@@ -638,6 +648,149 @@ pre {
 
 .small-action-button:hover {
   background: #e7f4f7;
+}
+
+.analyzr-control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #506070;
+  font-size: 0.86rem;
+}
+
+.refresh-analysis-button {
+  width: auto;
+  border: 1px solid #155e75;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #155e75;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 6px 9px;
+}
+
+.refresh-analysis-button:hover:not(:disabled) {
+  background: #e7f4f7;
+}
+
+.refresh-analysis-button:disabled {
+  border-color: #d9dee7;
+  background: #eef2f6;
+  color: #7b8794;
+  cursor: not-allowed;
+}
+
+.contract-snapshot,
+.analysis-tabs,
+.analysis-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.contract-snapshot {
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.contract-snapshot h3,
+.analysis-tabs h3,
+.contract-snapshot h4 {
+  margin: 0;
+  color: #102033;
+  line-height: 1.25;
+}
+
+.contract-snapshot h3,
+.analysis-tabs h3 {
+  font-size: 0.98rem;
+}
+
+.contract-snapshot h4 {
+  font-size: 0.84rem;
+}
+
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.snapshot-grid section {
+  min-width: 0;
+}
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snapshot-list li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  color: #394957;
+  line-height: 1.35;
+}
+
+.snapshot-list strong {
+  color: #102033;
+}
+
+.snapshot-list span {
+  color: #506070;
+  font-size: 0.88rem;
+}
+
+.compact-snapshot-list li {
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.analysis-tab-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.analysis-tab-button {
+  flex: 0 0 auto;
+  border: 1px solid #c8d2dc;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #394957;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 7px 9px;
+}
+
+.analysis-tab-button:hover {
+  background: #e7f4f7;
+}
+
+.analysis-tab-button-active,
+.analysis-tab-button-active:hover {
+  border-color: #155e75;
+  background: #155e75;
+  color: #ffffff;
+}
+
+.analysis-tab-content {
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 12px;
 }
 
 .term-meta,

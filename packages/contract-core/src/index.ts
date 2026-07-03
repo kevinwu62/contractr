@@ -11,6 +11,14 @@ export {
   findCrossReferenceTarget,
   findPotentialBrokenReferences,
 } from "./crossReferences";
+export {
+  detectKeyClauses,
+  extractContractLayout,
+  extractDocumentStats,
+  extractGoverningLaw,
+  extractKeyDates,
+  extractParties,
+} from "./contractAnalysis";
 export { extractPotentialObligations } from "./obligations";
 export { detectSelectionContext } from "./selectionContext";
 
@@ -27,6 +35,14 @@ export type {
   CrossReferenceType,
   PotentialBrokenReference,
 } from "./crossReferences";
+export type {
+  ContractLayout,
+  DetectedParty,
+  DocumentStats,
+  GoverningLawResult,
+  KeyClause,
+  KeyDate,
+} from "./contractAnalysis";
 export type { PotentialObligation } from "./obligations";
 export type {
   SelectionActionId,
